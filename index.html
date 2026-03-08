@@ -1090,6 +1090,8 @@ function App() {
       for (const [gameId, splits] of Object.entries(splitsData)) {
         if (next[gameId]) {
           const gd = next[gameId];
+          // Don't update splits for locked (live/final) games — BetScore should be frozen
+          if (gd._closingLocked) continue;
           if (overwrite || gd.tickets === '' || gd.tickets == null) {
             var finalT = splits.side === 'home' ? parseInt(splits.tickets) : 100 - parseInt(splits.tickets);
             var finalM = splits.side === 'home' ? parseInt(splits.money) : 100 - parseInt(splits.money);
@@ -2197,15 +2199,20 @@ function App() {
 
 
   // ── Render helper: BetScore card ──
-  const BsCard = ({ label, labelColor, bs, locked, checks }) => {
-    // If game is locked and we have a locked score, show ONLY the locked score (no live recalculation)
-    const showScore = locked != null ? locked : (bs ? bs.score : null);
+  const BsCard = ({ label, labelColor, bs, locked, checks, isLive }) => {
+    // If game is live/final: show locked score only. If no locked score, show "--" (not a live recalc)
+    const showScore = locked != null ? locked : (isLive ? null : (bs ? bs.score : null));
     if (!bs && locked == null) return (
       <div className="bs-card" style={{opacity:0.4}}>
         <div className="bs-side-label" style={{color: labelColor || 'var(--text-dim)', textAlign:'center', padding:'12px 0'}}>{label}</div>
       </div>
     );
-    const v = verdict(showScore || 0);
+    if (showScore == null) return (
+      <div className="bs-card" style={{opacity:0.5}}>
+        <div className="bs-side-label" style={{color: labelColor || 'var(--text-dim)', textAlign:'center', padding:'12px 0'}}>{label} {isLive ? '(locked)' : ''}</div>
+      </div>
+    );
+    const v = verdict(showScore);
     const ch = checks || [false,false,false];
     return (
       <div className="bs-card">
@@ -2220,7 +2227,7 @@ function App() {
         <div className="bs-scores">
           <div className="bs-live-wrap">
             <div className="bs-live-label">{locked != null ? 'Final' : 'Live'}</div>
-            <div className={'bs-live-num ' + getScoreClass(showScore || 0)}>{showScore}</div>
+            <div className={'bs-live-num ' + getScoreClass(showScore)}>{showScore}</div>
           </div>
         </div>
         <span className={'verdict-chip ' + v.c}>{v.t}</span>
@@ -2541,8 +2548,8 @@ function App() {
           <div className="bs-section">
             <div className="bs-section-label">Spread BetScore</div>
             <div className="bs-grid">
-              <BsCard label={game.homeName} labelColor="var(--gold)" bs={all.home} locked={gd.lockedHomeBS} checks={homeChecks} />
-              <BsCard label={game.awayName} labelColor="var(--accent)" bs={all.away} locked={gd.lockedAwayBS} checks={awayChecks} />
+              <BsCard label={game.homeName} labelColor="var(--gold)" bs={all.home} locked={gd.lockedHomeBS} checks={homeChecks} isLive={gd._closingLocked} />
+              <BsCard label={game.awayName} labelColor="var(--accent)" bs={all.away} locked={gd.lockedAwayBS} checks={awayChecks} isLive={gd._closingLocked} />
             </div>
           </div>
         )}
@@ -2552,8 +2559,8 @@ function App() {
           <div className="bs-section" style={{borderTopColor:'var(--accent)'}}>
             <div className="bs-section-label" style={{color:'var(--accent)'}}>Total BetScore</div>
             <div className="bs-grid">
-              <BsCard label="Over" labelColor="var(--green)" bs={all.over} locked={gd.lockedOverBS} checks={overChecks} />
-              <BsCard label="Under" labelColor="var(--red)" bs={all.under} locked={gd.lockedUnderBS} checks={underChecks} />
+              <BsCard label="Over" labelColor="var(--green)" bs={all.over} locked={gd.lockedOverBS} checks={overChecks} isLive={gd._closingLocked} />
+              <BsCard label="Under" labelColor="var(--red)" bs={all.under} locked={gd.lockedUnderBS} checks={underChecks} isLive={gd._closingLocked} />
             </div>
           </div>
         )}
