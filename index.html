@@ -343,6 +343,34 @@ function App() {
   const didAutoFetch = useRef(false);
   useEffect(() => { if (!didAutoFetch.current && games.length === 0) { didAutoFetch.current = true; setTimeout(() => fetchGames(), 500); } }, []);
 
+  // ── 5 AM ET daily auto-refresh ──
+  const lastAutoDay = useRef(load('lastAutoDay', ''));
+  useEffect(() => {
+    const checkDailyRefresh = () => {
+      // Get current time in Eastern
+      const now = new Date();
+      const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+      const et = new Date(etStr);
+      const etHour = et.getHours();
+      const etDate = et.toISOString().slice(0, 10);
+      // If it's 5 AM ET or later AND we haven't refreshed today
+      if (etHour >= 5 && lastAutoDay.current !== etDate) {
+        lastAutoDay.current = etDate;
+        save('lastAutoDay', etDate);
+        console.log('[AutoRefresh] 5 AM ET new day — clearing old data & fetching fresh games');
+        // Clear old game data for fresh slate
+        setGameData({});
+        save('gameData', {});
+        fetchGames();
+      }
+    };
+    // Check immediately on load
+    checkDailyRefresh();
+    // Then check every 5 minutes
+    const timer = setInterval(checkDailyRefresh, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [apiKey]);
+
   const abortRef = useRef(null);
 
   // ── Polymarket CBB fetch ──
@@ -1105,10 +1133,14 @@ function App() {
               gd.homeCurrentLine = g.spread;
               gd.awayCurrentLine = g.awaySpread != null ? g.awaySpread : -g.spread;
               gd._lastApiHome = g.spread; gd._lastApiAway = g.awaySpread != null ? g.awaySpread : -g.spread;
-              // Track line history
+              // Track line history — record every refresh so sparkline always shows
               if (!gd.lineHistory) gd.lineHistory = [];
-              if (prevHome !== g.spread || prevAway !== (g.awaySpread != null ? g.awaySpread : -g.spread)) {
-                gd.lineHistory.push({ time: Date.now(), homeSpread: g.spread, awaySpread: g.awaySpread != null ? g.awaySpread : -g.spread });
+              const newHomeSpread = g.spread;
+              const newAwaySpread = g.awaySpread != null ? g.awaySpread : -g.spread;
+              const lastHist = gd.lineHistory.length > 0 ? gd.lineHistory[gd.lineHistory.length - 1] : null;
+              // Always push if empty, or if line changed, or if >60s since last entry (periodic snapshot)
+              if (!lastHist || lastHist.homeSpread !== newHomeSpread || lastHist.awaySpread !== newAwaySpread || (Date.now() - lastHist.time > 60000)) {
+                gd.lineHistory.push({ time: Date.now(), homeSpread: newHomeSpread, awaySpread: newAwaySpread });
               }
             }
             if ((gd.openTotal == null) && g.total !== null) gd.openTotal = g.total;
@@ -1530,10 +1562,26 @@ function App() {
 
   // ── Render helper: Line History Sparkline ──
   const renderSparkline = (lineHistory) => {
-    if (!lineHistory || lineHistory.length < 2) return null;
-    const width = 200, height = 60, padding = 8;
+    if (!lineHistory || lineHistory.length < 1) return null;
+    const width = 280, height = 60, padding = 10;
     const inner = { x: padding, y: padding, w: width - padding * 2, h: height - padding * 2 };
     const spreads = lineHistory.map(e => e.homeSpread);
+    const goldColor = '#ff9f0a';
+    const textMutedColor = '#a0a0a5';
+    const gradId = 'sparkGrad_' + Math.random().toString(36).substr(2, 9);
+    const firstVal = spreads[0], lastVal = spreads[spreads.length - 1];
+    // Single point — show a dot with the current value
+    if (lineHistory.length === 1) {
+      return (
+        <div style={{textAlign:'center', padding:'8px 0'}}>
+          <svg width={width} height={height} style={{backgroundColor: 'rgba(255,159,10,0.04)', borderRadius: '8px'}}>
+            <circle cx={width/2} cy={height/2} r="4" fill={goldColor} />
+            <text x={width/2} y={height/2 - 10} fontSize="11" fill={textMutedColor} fontFamily="monospace" textAnchor="middle">{firstVal > 0 ? '+' : ''}{firstVal}</text>
+            <text x={width/2} y={height - 6} fontSize="9" fill="rgba(160,160,165,0.5)" fontFamily="sans-serif" textAnchor="middle">Refresh again to build chart</text>
+          </svg>
+        </div>
+      );
+    }
     const min = Math.min(...spreads);
     const max = Math.max(...spreads);
     const range = max - min || 1;
@@ -1543,24 +1591,25 @@ function App() {
       return [x, y];
     });
     const pathStr = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-    const firstVal = spreads[0], lastVal = spreads[spreads.length - 1];
-    const goldColor = '#ff9f0a';
-    const textMutedColor = '#a0a0a5';
-    const gradId = 'sparkGrad_' + Math.random().toString(36).substr(2, 9);
+    // If all values are the same (flat line), center the line vertically
+    const isFlat = min === max;
     return (
-      <svg width={width} height={height} style={{backgroundColor: 'rgba(255,159,10,0.04)', borderRadius: '8px', overflow: 'visible'}}>
-        <defs>
-          <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="rgba(255,159,10,0.3)" />
-            <stop offset="100%" stopColor="rgba(255,159,10,0.05)" />
-          </linearGradient>
-        </defs>
-        <path d={pathStr} stroke={goldColor} strokeWidth="2" fill="none" />
-        <path d={pathStr + 'L' + (inner.x + inner.w - 1) + ',' + (inner.y + inner.h) + 'L' + inner.x + ',' + (inner.y + inner.h) + 'Z'} fill={'url(#' + gradId + ')'} />
-        <line x1={inner.x} y1={inner.y + inner.h / 2} x2={inner.x + inner.w} y2={inner.y + inner.h / 2} stroke="rgba(255,159,10,0.15)" strokeWidth="1" strokeDasharray="2,2" />
-        <text x={inner.x + 4} y={inner.y + 12} fontSize="10" fill={textMutedColor} fontFamily="monospace">{firstVal > 0 ? '+' : ''}{firstVal}</text>
-        <text x={inner.x + inner.w - 24} y={inner.y + 12} fontSize="10" fill={textMutedColor} fontFamily="monospace" textAnchor="end">{lastVal > 0 ? '+' : ''}{lastVal}</text>
-      </svg>
+      <div style={{textAlign:'center', padding:'4px 0'}}>
+        <svg width={width} height={height} style={{backgroundColor: 'rgba(255,159,10,0.04)', borderRadius: '8px', overflow: 'visible'}}>
+          <defs>
+            <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="rgba(255,159,10,0.3)" />
+              <stop offset="100%" stopColor="rgba(255,159,10,0.05)" />
+            </linearGradient>
+          </defs>
+          <path d={pathStr} stroke={goldColor} strokeWidth="2" fill="none" />
+          {!isFlat && <path d={pathStr + 'L' + points[points.length-1][0].toFixed(1) + ',' + (inner.y + inner.h) + 'L' + inner.x + ',' + (inner.y + inner.h) + 'Z'} fill={'url(#' + gradId + ')'} />}
+          <line x1={inner.x} y1={inner.y + inner.h / 2} x2={inner.x + inner.w} y2={inner.y + inner.h / 2} stroke="rgba(255,159,10,0.15)" strokeWidth="1" strokeDasharray="2,2" />
+          <text x={inner.x + 2} y={inner.y + 12} fontSize="10" fill={textMutedColor} fontFamily="monospace">{firstVal > 0 ? '+' : ''}{firstVal}</text>
+          <text x={inner.x + inner.w - 2} y={inner.y + 12} fontSize="10" fill={goldColor} fontFamily="monospace" textAnchor="end">{lastVal > 0 ? '+' : ''}{lastVal}</text>
+          <text x={width/2} y={height - 4} fontSize="9" fill="rgba(160,160,165,0.4)" fontFamily="sans-serif" textAnchor="middle">{lineHistory.length} pts</text>
+        </svg>
+      </div>
     );
   };
 
@@ -1679,7 +1728,7 @@ function App() {
         </div>
 
         <div className={`card-expandable-section ${!isExpanded ? 'collapsed' : ''}`}>
-        {gd.lineHistory && gd.lineHistory.length > 1 && (
+        {gd.lineHistory && gd.lineHistory.length >= 1 && (
           <div className="inputs-section" style={{borderBottom: '1px solid var(--border)'}}>
             <div className="inputs-label" style={{color:'var(--gold)'}}>Line History ({game.homeName})</div>
             <div style={{display: 'flex', justifyContent: 'center', padding: '4px 0'}}>
@@ -1913,6 +1962,7 @@ function App() {
           <input type="checkbox" checked={notificationsEnabled} onChange={e => setNotificationsEnabled(e.target.checked)} style={{marginRight: '8px', cursor: 'pointer', width: 'auto'}} />
           <span style={{fontSize: '12px', textTransform: 'capitalize'}}>🔔 Sharp Play Notifications</span>
         </label>
+        <div style={{marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)'}}>⏰ Auto-refreshes daily at 5 AM ET for fresh lines</div>
       </div>
 
       <button className={'fetch-btn ' + (!loading && games.length > 0 ? 'success' : '')} onClick={() => { if ('Notification' in window && notificationsEnabled && Notification.permission === 'default') { Notification.requestPermission(); } fetchGames(); }} disabled={loading}>
