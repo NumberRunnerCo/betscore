@@ -142,6 +142,7 @@ body {
 .bs-live-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); }
 .bs-live-num { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 900; text-shadow: 0 0 15px currentColor; }
 .verdict-chip { font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: var(--radius-sm); letter-spacing: 1px; display: inline-block; margin-top: 4px; }
+.verdict-max { background: linear-gradient(135deg, #ff9f0a 0%, #e8850a 100%); color: #000; border: 1px solid rgba(255,159,10,0.5); box-shadow: 0 0 12px rgba(255,159,10,0.4); }
 .verdict-play { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
 .verdict-lean { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
 .verdict-pass { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
@@ -248,7 +249,7 @@ body {
 .sharp-filter-btn { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; color: var(--text-dim); background: transparent; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
 .sharp-filter-btn.active { color: var(--gold); border-color: var(--gold); background: rgba(255,159,10,0.1); }
 .rlm-badge { display: inline-flex; align-items: center; gap: 4px; background: rgba(139,92,246,0.2); color: #a78bfa; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 800; letter-spacing: 0.5px; border: 1px solid rgba(139,92,246,0.3); margin-left: 4px; }
-.sparkline-container { width: 100%; height: 60px; padding: 8px 0; background: rgba(255,159,10,0.04); border-radius: var(--radius-sm); overflow: hidden; }
+.sparkline-container { width: 100%; height: 80px; padding: 8px 0; background: linear-gradient(180deg, rgba(30,30,34,0.9) 0%, rgba(20,20,24,0.95) 100%); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid rgba(255,159,10,0.08); }
 .game-note-input { width: 100%; padding: 8px 10px; font-size: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; resize: vertical; min-height: 50px; }
 .game-note-input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 3px rgba(255,159,10,0.15); }
 .game-note-input::placeholder { color: var(--text-muted); }
@@ -269,8 +270,10 @@ body {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
+
 
 const fetchWithFallback = async (url, timeoutMs) => {
   const tm = timeoutMs || 8000;
@@ -287,30 +290,120 @@ const fetchWithFallback = async (url, timeoutMs) => {
   throw new Error('All fetch methods failed');
 };
 
+
 const memStore = {};
 const storageWorks = (() => { try { localStorage.setItem('_t','1'); localStorage.removeItem('_t'); return true; } catch(e) { return false; } })();
 const save = (k, v) => { const key='nick-'+k; const val=JSON.stringify(v); memStore[key]=val; if(storageWorks){try{localStorage.setItem(key,val);}catch(e){}} };
 const load = (k, def) => { const key='nick-'+k; try{const v=storageWorks?localStorage.getItem(key):memStore[key]; return v?JSON.parse(v):def;}catch(e){return def;} };
 
+
 const BOOK_ABBR = { fanduel:'FD', draftkings:'DK', betmgm:'MGM', caesars:'CZR', pointsbet:'PB', betrivers:'BR', unibet:'UNI', wynn:'WYNN', bet365:'365' };
 const bookName = (key) => BOOK_ABBR[key] || key.toUpperCase().slice(0,3);
 
-const normalize = (name) => name.toLowerCase()
-  .replace(/\b(bulldogs|cardinals|wildcats|tigers|eagles|bears|lions|cougars|huskies|knights|warriors|panthers|hawks|falcons|hornets|owls|rams|wolves|mustangs|spartans|trojans|gators|seminoles|hurricanes|cavaliers|hokies|commodores|volunteers|crimson tide|sooners|longhorns|jayhawks|mountaineers|cyclones|cowboys|red raiders|bobcats|aggies|bruins|beavers|ducks|sun devils|utes|buffaloes|golden bears|aztecs|lobos|rebels|running rebels|runnin rebels|hoyas|blue devils|demon deacons|tar heels|wolfpack|orange|orangemen|fighting irish|boilermakers|hoosiers|buckeyes|wolverines|badgers|hawkeyes|golden gophers|illini|fighting illini|nittany lions|terrapins|terps|scarlet knights|cornhuskers|razorbacks|gamecocks|blue jays|musketeers|friars|pirates|peacocks|gaels|zags|shockers|bearcats|bluejays|red storm|johnnies|golden eagles|braves|bison|flyers|explorers|dukes|spiders|colonials|patriots|miners|thunderbirds|anteaters|matadors|titans|highlanders|roadrunners|49ers|monarchs|hatters|paladins|catamounts|phoenix|penguins|kangaroos|dolphins|ospreys|blazers|jaguars)\b/g, '')
-  .replace(/\s+/g, ' ').trim();
+
+const COLLEGE_MASCOTS = /\b(bulldogs|cardinals|wildcats|tigers|eagles|bears|lions|cougars|huskies|knights|warriors|panthers|hawks|falcons|hornets|owls|rams|wolves|mustangs|spartans|trojans|gators|seminoles|hurricanes|cavaliers|hokies|commodores|volunteers|crimson tide|sooners|longhorns|jayhawks|mountaineers|cyclones|cowboys|red raiders|bobcats|aggies|bruins|beavers|ducks|sun devils|utes|buffaloes|golden bears|aztecs|lobos|rebels|running rebels|runnin rebels|hoyas|blue devils|demon deacons|tar heels|wolfpack|orange|orangemen|fighting irish|boilermakers|hoosiers|buckeyes|wolverines|badgers|hawkeyes|golden gophers|illini|fighting illini|nittany lions|terrapins|terps|scarlet knights|cornhuskers|razorbacks|gamecocks|blue jays|musketeers|friars|pirates|peacocks|gaels|zags|shockers|bearcats|bluejays|red storm|johnnies|golden eagles|braves|bison|flyers|explorers|dukes|spiders|colonials|patriots|miners|thunderbirds|anteaters|matadors|titans|highlanders|roadrunners|49ers|monarchs|hatters|paladins|catamounts|phoenix|penguins|kangaroos|dolphins|ospreys|blazers|jaguars)\b/g;
+const isCollegeSport = (s) => s === 'basketball_ncaab' || s === 'americanfootball_ncaaf';
+const normalize = (name, sportKey) => {
+  let n = name.toLowerCase();
+  if (!sportKey || isCollegeSport(sportKey)) n = n.replace(COLLEGE_MASCOTS, '');
+  return n.replace(/\s+/g, ' ').trim();
+};
+// Pro-friendly: just lowercase + trim, no mascot stripping
+const normalizePro = (name) => name.toLowerCase().replace(/\s+/g, ' ').trim();
+
+
+const SPORT_CONFIG = {
+  basketball_ncaab: { name: 'CBB', espn: 'basketball/mens-college-basketball', groups: '50', market: 'spreads', mlPrimary: false,
+    polySlug: /cbb|ncaab|college.?basket/,
+    splitsSources: [
+      { name: 'Covers', url: 'https://contests.covers.com/consensus/topconsensus/ncaab/overall' },
+      { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/ncaab/consensus-picks' },
+      { name: 'VSiN/DK', url: 'https://data.vsin.com/college-basketball/betting-splits/' },
+      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/college-basketball/public-betting-trends/' },
+    ]},
+  basketball_nba: { name: 'NBA', espn: 'basketball/nba', groups: null, market: 'spreads', mlPrimary: false,
+    polySlug: /\bnba\b/,
+    splitsSources: [
+      { name: 'Covers', url: 'https://contests.covers.com/consensus/topconsensus/nba/overall' },
+      { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/nba/consensus-picks' },
+      { name: 'VSiN/DK', url: 'https://data.vsin.com/nba/betting-splits/' },
+      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/nba/public-betting-trends/' },
+    ]},
+  americanfootball_nfl: { name: 'NFL', espn: 'football/nfl', groups: null, market: 'spreads', mlPrimary: false,
+    polySlug: /\bnfl\b/,
+    splitsSources: [
+      { name: 'Covers', url: 'https://contests.covers.com/consensus/topconsensus/nfl/overall' },
+      { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/nfl/consensus-picks' },
+      { name: 'VSiN/DK', url: 'https://data.vsin.com/nfl/betting-splits/' },
+      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/nfl/public-betting-trends/' },
+    ]},
+  americanfootball_ncaaf: { name: 'CFB', espn: 'football/college-football', groups: '80', market: 'spreads', mlPrimary: false,
+    polySlug: /cfb|ncaaf|college.?foot/,
+    splitsSources: [
+      { name: 'Covers', url: 'https://contests.covers.com/consensus/topconsensus/ncaaf/overall' },
+      { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/ncaaf/consensus-picks' },
+      { name: 'VSiN/DK', url: 'https://data.vsin.com/college-football/betting-splits/' },
+      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/college-football/public-betting-trends/' },
+    ]},
+  baseball_mlb: { name: 'MLB', espn: 'baseball/mlb', groups: null, market: 'h2h', mlPrimary: true,
+    polySlug: /\bmlb\b|baseball/,
+    splitsSources: [
+      { name: 'Covers', url: 'https://contests.covers.com/consensus/topconsensus/mlb/overall' },
+      { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/mlb/consensus-picks' },
+      { name: 'VSiN/DK', url: 'https://data.vsin.com/mlb/betting-splits/' },
+      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/mlb/public-betting-trends/' },
+    ]},
+  icehockey_nhl: { name: 'NHL', espn: 'hockey/nhl', groups: null, market: 'h2h', mlPrimary: true,
+    polySlug: /\bnhl\b|hockey/,
+    splitsSources: [
+      { name: 'Covers', url: 'https://contests.covers.com/consensus/topconsensus/nhl/overall' },
+      { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/nhl/consensus-picks' },
+      { name: 'VSiN/DK', url: 'https://data.vsin.com/nhl/betting-splits/' },
+      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/nhl/public-betting-trends/' },
+    ]},
+};
+
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '16px', background: 'rgba(255,69,58,0.1)', border: '1px solid rgba(255,69,58,0.3)', borderRadius: '12px', margin: '8px 12px' }}>
+          <div style={{ color: '#ff453a', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>Something went wrong with this game card</div>
+          <button onClick={() => this.setState({ hasError: false })} style={{ padding: '6px 12px', background: '#ff453a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 
 function App() {
+  const [sport, setSport] = useState(load('sport', 'basketball_ncaab'));
   const [apiKey, setApiKey] = useState(load('apiKey', ''));
-  const [games, setGames] = useState(load('games', []));
-  const [gameData, setGameData] = useState(load('gameData', {}));
-  const [bets, setBets] = useState(load('bets', {}));
-  const [history, setHistory] = useState(load('history', []));
+  const [games, setGames] = useState(load('games-' + sport, []));
+  const [gameData, setGameData] = useState(load('gameData-' + sport, {}));
+  const [bets, setBets] = useState(load('bets-' + sport, {}));
+  const [history, setHistory] = useState(load('history-' + sport, []));
   const [tab, setTab] = useState('scores');
   const [sortBy, setSortBy] = useState('betscore');
   const [confFilter, setConfFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
-  const [pinnedGames, setPinnedGames] = useState(load('pinned', []));
+  const [pinnedGames, setPinnedGames] = useState(load('pinned-' + sport, []));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [remaining, setRemaining] = useState(load('remaining', '?'));
   const [lastFetch, setLastFetch] = useState(load('lastFetch', ''));
@@ -323,25 +416,33 @@ function App() {
   const [splitsLog, setSplitsLog] = useState([]);
   const [splitsSourceStatus, setSplitsSourceStatus] = useState({});
   const [splitsMatchCount, setSplitsMatchCount] = useState(0);
-  const [sharpRecords, setSharpRecords] = useState(load('sharpRecords', { wins: 0, losses: 0, pushes: 0, history: [] }));
+  const [sharpRecords, setSharpRecords] = useState(load('sharpRecords-' + sport, { wins: 0, losses: 0, pushes: 0, clvBeats: 0, clvMisses: 0, history: [] }));
   const [expandedCards, setExpandedCards] = useState({});
   const [sharpOnlyFilter, setSharpOnlyFilter] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(load('notificationsEnabled', true));
+  const [oddsCache, setOddsCache] = useState({});
+  const oddsCacheRef = useRef({});
+  const [lastFetchTimestamp, setLastFetchTimestamp] = useState(0);
+  const lastFetchTimestampRef = useRef(0);
   const addSplitsLog = (msg, type) => { setSplitsLog(prev => [...prev.slice(-30), { msg, type: type || 'info', t: Date.now() }]); };
 
+
+  useEffect(() => { save('sport', sport); }, [sport]);
   useEffect(() => { save('apiKey', apiKey); }, [apiKey]);
-  useEffect(() => { save('games', games); }, [games]);
-  useEffect(() => { save('gameData', gameData); }, [gameData]);
-  useEffect(() => { save('bets', bets); }, [bets]);
-  useEffect(() => { save('history', history); }, [history]);
+  useEffect(() => { save('games-' + sport, games); }, [games, sport]);
+  useEffect(() => { save('gameData-' + sport, gameData); }, [gameData, sport]);
+  useEffect(() => { save('bets-' + sport, bets); }, [bets, sport]);
+  useEffect(() => { save('history-' + sport, history); }, [history, sport]);
   useEffect(() => { save('remaining', remaining); }, [remaining]);
   useEffect(() => { save('lastFetch', lastFetch); }, [lastFetch]);
-  useEffect(() => { save('pinned', pinnedGames); }, [pinnedGames]);
-  useEffect(() => { save('sharpRecords', sharpRecords); }, [sharpRecords]);
+  useEffect(() => { save('pinned-' + sport, pinnedGames); }, [pinnedGames, sport]);
+  useEffect(() => { save('sharpRecords-' + sport, sharpRecords); }, [sharpRecords, sport]);
   useEffect(() => { save('notificationsEnabled', notificationsEnabled); }, [notificationsEnabled]);
+
 
   const didAutoFetch = useRef(false);
   useEffect(() => { if (!didAutoFetch.current && games.length === 0) { didAutoFetch.current = true; setTimeout(() => fetchGames(), 500); } }, []);
+
 
   // ── 5 AM ET daily auto-refresh ──
   const lastAutoDay = useRef(load('lastAutoDay', ''));
@@ -371,13 +472,16 @@ function App() {
     return () => clearInterval(timer);
   }, [apiKey]);
 
+
   const abortRef = useRef(null);
+
 
   // ── Polymarket CBB fetch ──
   const fetchPolymarket = async (gamesList) => {
     const log = (msg, data) => console.log('[Poly] ' + msg, data !== undefined ? data : '');
     setPolyStatus('loading...');
     const BASE = 'https://gamma-api.polymarket.com';
+
 
     // Step 0: Find a working CORS proxy first with a simple test
     let workingProxy = null;
@@ -401,9 +505,10 @@ function App() {
             workingProxy = i;
             log('Proxy ' + i + ' works! Response length: ' + text.length);
             // Parse sports response while we have it
+            var sportsData = null;
             try {
-              var sportsData = JSON.parse(text);
-            } catch(e) {}
+              sportsData = JSON.parse(text);
+            } catch(e) { log('Sports JSON parse error: ' + e.message); }
             break;
           }
         }
@@ -414,6 +519,7 @@ function App() {
       setPolyStatus('no proxy');
       return {};
     }
+
 
     // Fast fetch using the working proxy
     const pFetch = async (url, label) => {
@@ -430,8 +536,16 @@ function App() {
       } catch(e) { log(label + ' err: ' + e.message); return null; }
     };
 
+
     try {
-      // Step 1: Find CBB series_id from sports data
+      // Step 1: Find series_id for the active sport from sports data
+      const sportCfg = SPORT_CONFIG[sport];
+      const polyRegex = sportCfg && sportCfg.polySlug ? sportCfg.polySlug : null;
+      if (!polyRegex) {
+        log('No Polymarket slug configured for ' + (sportCfg ? sportCfg.name : sport));
+        setPolyStatus('not configured');
+        return {};
+      }
       let seriesId = null;
       const sports = sportsData || await pFetch(BASE + '/sports', '/sports');
       if (sports) {
@@ -441,18 +555,20 @@ function App() {
           const sl = (s.slug || '').toLowerCase();
           const nm = (s.name || s.label || s.title || '').toLowerCase();
           log('  ' + sl + ' | ' + nm + ' | id=' + (s.seriesId || s.series_id || s.id || '?'));
-          if (/cbb|ncaab|college.?basket/.test(sl + ' ' + nm)) {
+          if (polyRegex.test(sl + ' ' + nm)) {
             seriesId = s.seriesId || s.series_id || s.id;
-            log('CBB seriesId: ' + seriesId);
+            log(sportCfg.name + ' seriesId: ' + seriesId);
             break;
           }
         }
-        if (!seriesId) log('CBB not in sports list');
+        if (!seriesId) log(sportCfg.name + ' not in sports list');
       }
+
 
       // Step 2: Get game events (3 focused strategies, not dozens)
       let events = [];
       const toArr = (d) => { if (!d) return []; return Array.isArray(d) ? d : (d.data || d.events || []); };
+
 
       // A: series_id + game tag (best)
       if (seriesId) {
@@ -476,15 +592,16 @@ function App() {
         log('Markets: ' + mkts.length);
         if (mkts.length > 0) {
           mkts.slice(0, 5).forEach((m, i) => log('  [' + i + '] ' + (m.question || m.slug || '?')));
-          // Filter for CBB games
-          const cbbGames = mkts.filter(m => {
+          // Filter for active sport games
+          const sportGames = mkts.filter(m => {
             const q = (m.question || m.title || '').toLowerCase();
-            return (q.includes(' vs') || q.includes(' v ')) && (q.includes('basketball') || q.includes('cbb') || q.includes('ncaa') || gamesList.some(g => q.includes(g.homeName.toLowerCase()) || q.includes(g.awayName.toLowerCase())));
+            return (q.includes(' vs') || q.includes(' v ')) && (polyRegex.test(q) || gamesList.some(g => q.includes(g.homeName.toLowerCase()) || q.includes(g.awayName.toLowerCase())));
           });
-          log('CBB game markets: ' + cbbGames.length);
-          if (cbbGames.length > 0) events = cbbGames.map(m => ({ title: m.question || '', markets: [m], slug: m.slug || '' }));
+          log(sportCfg.name + ' game markets: ' + sportGames.length);
+          if (sportGames.length > 0) events = sportGames.map(m => ({ title: m.question || '', markets: [m], slug: m.slug || '' }));
         }
       }
+
 
       if (events.length === 0) {
         log('No game events found');
@@ -492,8 +609,10 @@ function App() {
         return {};
       }
 
+
       setPolyStatus('matching ' + events.length + '...');
       log('Processing ' + events.length + ' game events');
+
 
       // Step 3: Parse events into a matchable map
       const polyMap = {};
@@ -518,13 +637,18 @@ function App() {
           liquidity: liq,
           slug: ev.slug || '',
         };
-        // Index by outcome names AND by title
+        // Index by outcome names AND by title — use both college-norm and pro-norm
         for (const o of outcomes) {
-          const norm = normalize(o);
+          const norm = normalize(o, sport);
+          const pro = normalizePro(o);
           if (norm.length > 2) polyMap[norm] = entry;
-          // Also store raw lowercase (without mascot stripping)
+          if (pro.length > 2 && pro !== norm) polyMap[pro] = entry;
+          // Also store raw lowercase
           const raw = o.toLowerCase().trim();
           if (raw.length > 2) polyMap['_raw_' + raw] = entry;
+          // Last word (mascot name like "Lakers", "Celtics") — great for pro sports
+          const lastWord = pro.split(' ').pop();
+          if (lastWord && lastWord.length >= 4) polyMap['_last_' + lastWord] = entry;
         }
         const title = (ev.title || ev.question || '').toLowerCase();
         polyMap['_title_' + title] = entry;
@@ -540,6 +664,7 @@ function App() {
     }
   };
 
+
   // ── Validate splits data quality ──
   const validateSplits = (tickets, money) => {
     const t = parseInt(tickets), m = parseInt(money);
@@ -554,6 +679,7 @@ function App() {
     return { valid: true, confidence, reason };
   };
 
+
   // ── Parse pasted/scraped splits text into game data ──
   const parseSplitsText = (text, gamesList) => {
     const log = (msg) => console.log('[Splits] ' + msg);
@@ -561,6 +687,7 @@ function App() {
     log('Parsing text (' + text.length + ' chars). First 500: ' + text.substring(0, 500));
     const lines = text.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
     log(lines.length + ' lines');
+
 
     // Build comprehensive team name lookup with many aliases
     const gameLookup = {}; // key -> { game, side }
@@ -603,11 +730,19 @@ function App() {
       addLookup(g.homeFullName, g, 'home');
       addLookup(g.awayName, g, 'away');
       addLookup(g.awayFullName, g, 'away');
-      // Also normalized versions (strip mascots)
-      addLookup(normalize(g.homeFullName), g, 'home');
-      addLookup(normalize(g.awayFullName), g, 'away');
+      // Also normalized versions (strip mascots for college)
+      addLookup(normalize(g.homeFullName, sport), g, 'home');
+      addLookup(normalize(g.awayFullName, sport), g, 'away');
+      // Pro-friendly: full lowercased name and last word (mascot)
+      addLookup(normalizePro(g.homeFullName), g, 'home');
+      addLookup(normalizePro(g.awayFullName), g, 'away');
+      const hLast = normalizePro(g.homeFullName).split(' ').pop();
+      const aLast = normalizePro(g.awayFullName).split(' ').pop();
+      if (hLast && hLast.length >= 4) addLookup(hLast, g, 'home');
+      if (aLast && aLast.length >= 4) addLookup(aLast, g, 'away');
     }
     log('Lookup has ' + Object.keys(gameLookup).length + ' keys. Sample: ' + Object.keys(gameLookup).slice(0, 20).join(', '));
+
 
     // Flexible team matching
     const findTeam = (rawName) => {
@@ -628,8 +763,10 @@ function App() {
       return null;
     };
 
+
     const results = {};
     const foundForGame = new Set(); // track game IDs we already matched
+
 
     // Strategy 1: Lines with team name + 2+ numbers (most common format)
     // Handles: "Duke 55 62", "Duke 55% 62%", "Duke  55  62  -3.5", "Duke | 55 | 62"
@@ -645,10 +782,12 @@ function App() {
       }
       if (allNums.length < 2) continue;
 
+
       // Extract team name: text before the first number
       const firstNumIdx = allNums[0].idx;
       const teamPart = line.substring(0, firstNumIdx).replace(/[|,\t:]+$/, '').trim();
       if (teamPart.length < 2) continue;
+
 
       const match = findTeam(teamPart);
       if (match && !foundForGame.has(match.game.id)) {
@@ -667,6 +806,7 @@ function App() {
       }
     }
 
+
     // Strategy 2: Team name on one line, numbers on the next (or nearby)
     if (Object.keys(results).length < gamesList.length) {
       for (let i = 0; i < lines.length; i++) {
@@ -676,6 +816,7 @@ function App() {
         const teamPart = line.replace(/[|,\t:]+/g, ' ').trim();
         const match = findTeam(teamPart);
         if (!match || foundForGame.has(match.game.id)) continue;
+
 
         // Look at next 1-3 lines for numbers
         for (let j = 1; j <= 3 && i + j < lines.length; j++) {
@@ -701,6 +842,7 @@ function App() {
         }
       }
     }
+
 
     // Strategy 3: Look for "Team1 vs Team2" on one line, then percentages nearby
     if (Object.keys(results).length < gamesList.length) {
@@ -736,6 +878,7 @@ function App() {
       }
     }
 
+
     log('Total matched: ' + Object.keys(results).length + '/' + gamesList.length);
     if (Object.keys(results).length === 0) {
       // Debug: show first 20 lines to help diagnose
@@ -744,6 +887,7 @@ function App() {
     }
     return results;
   };
+
 
   // ── Auto-fetch betting splits from public sources ──
   // ── Fetch HTML through CORS proxies ──
@@ -769,11 +913,13 @@ function App() {
     throw new Error('all proxies failed');
   };
 
+
   // ── Parse HTML page for splits data ──
   const parseHtmlForSplits = (html, gamesList, slog) => {
     try {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       slog('Page: ' + (doc.title || '(no title)'), 'info');
+
 
       // 1. Check for embedded JSON
       const scripts = doc.querySelectorAll('script');
@@ -812,6 +958,7 @@ function App() {
         }
       }
 
+
       // 2. Try table rows
       const rows = doc.querySelectorAll('tr');
       if (rows.length > 2) {
@@ -825,6 +972,7 @@ function App() {
         if (Object.keys(r).length > 0) return r;
       }
 
+
       // 3. Try consensus/matchup divs
       const divs = doc.querySelectorAll('[class*="consensus"], [class*="picks"], [class*="split"], [class*="matchup"], [class*="game"], [class*="event"], [class*="row"]');
       if (divs.length > 0) {
@@ -835,6 +983,7 @@ function App() {
         if (Object.keys(r).length > 0) return r;
       }
 
+
       // 4. Full body text
       const bodyText = doc.body ? (doc.body.innerText || doc.body.textContent || '') : '';
       slog('Body: ' + bodyText.length + ' chars', 'info');
@@ -842,6 +991,7 @@ function App() {
     } catch(e) { slog('Parse error: ' + e.message, 'err'); }
     return {};
   };
+
 
   // ── Auto-fetch betting splits from public sources ──
   const fetchBettingSplits = async (gamesList, isManual) => {
@@ -851,18 +1001,24 @@ function App() {
     setSplitsLog([]);
     slog('Fetching splits for ' + gamesList.length + ' games', 'info');
 
-    const sources = [
-      { name: 'Covers', url: 'https://contests.covers.com/consensus/topconsensus/ncaab/overall' },
-      { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/ncaab/consensus-picks' },
-      { name: 'VSiN/DK', url: 'https://data.vsin.com/college-basketball/betting-splits/' },
-      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/college-basketball/public-betting-trends/' },
-    ];
+
+    const cfg = SPORT_CONFIG[sport];
+    const sources = cfg && cfg.splitsSources ? cfg.splitsSources : [];
+    if (sources.length === 0) {
+      slog('No splits sources configured for ' + (cfg ? cfg.name : sport), 'err');
+      setSplitsStatus('no sources');
+      setSplitsLoading(false);
+      return {};
+    }
+
 
     const srcStatus = {};
     sources.forEach(s => { srcStatus[s.name] = 'waiting'; });
     setSplitsSourceStatus({...srcStatus});
 
+
     let allResults = {};
+
 
     for (const src of sources) {
       try {
@@ -871,13 +1027,16 @@ function App() {
         setSplitsStatus(src.name + '...');
         slog('Trying ' + src.name + '...', 'info');
 
+
         const html = await fetchHtml(src.url);
         slog(src.name + ': ' + html.length + ' bytes', 'info');
         srcStatus[src.name] = 'parsing...';
         setSplitsSourceStatus({...srcStatus});
 
+
         const data = parseHtmlForSplits(html, gamesList, slog);
         const count = Object.keys(data).length;
+
 
         if (count > 0) {
           slog(src.name + ': ' + count + ' games matched!', 'match');
@@ -898,6 +1057,7 @@ function App() {
       }
     }
 
+
     const total = Object.keys(allResults).length;
     setSplitsMatchCount(total);
     if (total > 0) {
@@ -910,6 +1070,16 @@ function App() {
     setSplitsLoading(false);
     return allResults;
   };
+
+
+  // ML to implied probability conversion
+  const mlToProb = (ml) => {
+    if (ml == null) return null;
+    return ml < 0 ? Math.abs(ml) / (Math.abs(ml) + 100) : 100 / (ml + 100);
+  };
+  // Convert ML probability movement to pseudo-spread value for BetScore
+  const probToSpreadEquiv = (probDelta) => probDelta * 30; // 3% shift ≈ 0.9 spread pts
+
 
   // ── Apply splits data to game inputs ──
   const applySplitsToGames = (splitsData, overwrite) => {
@@ -936,7 +1106,12 @@ function App() {
               gd._splitsConfidence = conf;
               filled++;
               // Calculate RLM: line moved toward team but public money is opposite
-              const homeLineMove = (parseFloat(gd.homeOpenLine) || 0) - (parseFloat(gd.homeCurrentLine) || 0);
+              let homeLineMove;
+              if (gd.isMlPrimary && gd.openHomeProb != null && gd.homeProb != null) {
+                homeLineMove = probToSpreadEquiv(gd.homeProb - gd.openHomeProb);
+              } else {
+                homeLineMove = (parseFloat(gd.homeOpenLine) || 0) - (parseFloat(gd.homeCurrentLine) || 0);
+              }
               const ticketsPct = parseFloat(finalT) || 0;
               if (homeLineMove > 0 && ticketsPct > 50) {
                 gd.rlmSide = 'away';
@@ -953,6 +1128,7 @@ function App() {
     });
     return filled;
   };
+
 
   // ── Handle paste submit ──
   const handlePasteSubmit = () => {
@@ -974,12 +1150,14 @@ function App() {
     }
   };
 
+
   // ── Manual fetch / clear splits ──
   const handleManualFetchSplits = async () => {
     if (games.length === 0) return;
     const data = await fetchBettingSplits(games, true);
     if (Object.keys(data).length > 0) applySplitsToGames(data, false);
   };
+
 
   const clearSplits = () => {
     setGameData(prev => {
@@ -994,19 +1172,34 @@ function App() {
     addSplitsLog('All splits cleared', 'info');
   };
 
-  const fetchGames = useCallback(async () => {
+
+  const fetchGames = useCallback(async (force) => {
+    // Cooldown: 5 minutes between fetches (unless forced)
+    const now = Date.now();
+    const cooldownMs = 5 * 60 * 1000;
+    const lastTs = lastFetchTimestampRef.current;
+    if (!force && lastTs > 0 && (now - lastTs) < cooldownMs) {
+      const secsLeft = Math.ceil((cooldownMs - (now - lastTs)) / 1000);
+      const minsLeft = Math.floor(secsLeft / 60);
+      const secsPart = secsLeft % 60;
+      setStatus('Cooldown: wait ' + minsLeft + 'm ' + secsPart + 's (saves API credits)');
+      return;
+    }
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
-    setStatus('Fetching games from ESPN...');
+    setStatus('Fetching ' + SPORT_CONFIG[sport].name + ' games...');
     try {
+      const cfg = SPORT_CONFIG[sport];
       const today = new Date();
       const dateStr = today.getFullYear() + String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
-      const espnUrl = 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=' + dateStr + '&limit=200&groups=50';
+      let espnUrl = 'https://site.api.espn.com/apis/site/v2/sports/' + cfg.espn + '/scoreboard?dates=' + dateStr + '&limit=200';
+      if (cfg.groups) espnUrl += '&groups=' + cfg.groups;
       const res = await fetchWithFallback(espnUrl);
       const data = await res.json();
       const events = data.events || [];
+
 
       const gamesList = events.map(ev => {
         const comp = ev.competitions[0];
@@ -1032,16 +1225,58 @@ function App() {
         };
       });
 
+
       setStatus(gamesList.length + ' games. Fetching lines...');
+
 
       let oddsMap = {};
       if (apiKey) {
         try {
-          const oddsUrl = 'https://api.the-odds-api.com/v4/sports/basketball_ncaab/odds/?apiKey=' + apiKey + '&regions=us&markets=spreads,totals&oddsFormat=american&bookmakers=fanduel,draftkings,betmgm,caesars';
-          const oddsRes = await fetchWithFallback(oddsUrl);
-          const rem = oddsRes.headers.get('x-requests-remaining');
-          if (rem) setRemaining(rem);
-          const oddsData = await oddsRes.json();
+          const sportKey = sport;
+          const markets = cfg.mlPrimary ? 'h2h,spreads,totals' : 'spreads,totals';
+
+          // Check cache first — serve cached data if < 5 min old
+          let oddsData = null;
+          const cached = oddsCacheRef.current[sportKey];
+          if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
+            oddsData = cached.data;
+            setStatus(gamesList.length + ' games. Using cached lines (' + Math.round((Date.now() - cached.timestamp) / 1000) + 's old)');
+          } else {
+            const oddsUrl = 'https://api.the-odds-api.com/v4/sports/' + sportKey + '/odds/?apiKey=' + apiKey + '&regions=us&markets=' + markets + '&oddsFormat=american&bookmakers=fanduel,draftkings,betmgm,caesars';
+            // Call Odds API directly (it supports CORS) — don't use proxy chain or headers get stripped
+            let oddsRes;
+            try {
+              oddsRes = await Promise.race([
+                fetch(oddsUrl),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000))
+              ]);
+            } catch(directErr) {
+              // Fallback to proxy only if direct fails — but we lose the credits header
+              console.log('[Odds] Direct fetch failed, trying proxy:', directErr.message);
+              oddsRes = await fetchWithFallback(oddsUrl);
+            }
+            const rem = oddsRes.headers.get('x-requests-remaining');
+            if (rem) {
+              setRemaining(rem);
+            } else {
+              // CORS may block the header — call free /v4/sports endpoint to read usage
+              try {
+                const usageRes = await fetch('https://api.the-odds-api.com/v4/sports/?apiKey=' + apiKey);
+                const usageRem = usageRes.headers.get('x-requests-remaining');
+                if (usageRem) setRemaining(usageRem);
+                else console.log('[Odds] Could not read credits header from usage endpoint either');
+              } catch(ue) { console.log('[Odds] Usage check failed:', ue.message); }
+            }
+            oddsData = await oddsRes.json();
+            // Cache the result
+            if (Array.isArray(oddsData)) {
+              oddsCacheRef.current = { ...oddsCacheRef.current, [sportKey]: { data: oddsData, timestamp: Date.now() } };
+              setOddsCache(oddsCacheRef.current);
+            }
+          }
+          lastFetchTimestampRef.current = Date.now();
+          setLastFetchTimestamp(lastFetchTimestampRef.current);
+
 
           if (Array.isArray(oddsData)) {
             for (const g of oddsData) {
@@ -1049,15 +1284,24 @@ function App() {
               const homeSpreads = [];
               const awaySpreads = [];
               const totals = [];
+              const homeMLs = [];
+              const awayMLs = [];
               for (const bk of (g.bookmakers || [])) {
                 const sm = bk.markets.find(m => m.key === 'spreads');
                 const tm = bk.markets.find(m => m.key === 'totals');
-                const bookEntry = { name: bookName(bk.key), homeSpread: null, homeJuice: null, awaySpread: null, awayJuice: null, total: null, overJuice: null, underJuice: null };
+                const hm = bk.markets.find(m => m.key === 'h2h');
+                const bookEntry = { name: bookName(bk.key), homeSpread: null, homeJuice: null, awaySpread: null, awayJuice: null, total: null, overJuice: null, underJuice: null, homeML: null, awayML: null };
                 if (sm) {
                   const ho = sm.outcomes.find(o => o.name === g.home_team);
                   const ao = sm.outcomes.find(o => o.name === g.away_team);
                   if (ho) { bookEntry.homeSpread = ho.point; bookEntry.homeJuice = ho.price; homeSpreads.push(ho.point); }
                   if (ao) { bookEntry.awaySpread = ao.point; bookEntry.awayJuice = ao.price; awaySpreads.push(ao.point); }
+                }
+                if (hm) {
+                  const hho = hm.outcomes.find(o => o.name === g.home_team);
+                  const hao = hm.outcomes.find(o => o.name === g.away_team);
+                  if (hho) { bookEntry.homeML = hho.price; homeMLs.push(hho.price); }
+                  if (hao) { bookEntry.awayML = hao.price; awayMLs.push(hao.price); }
                 }
                 if (tm) {
                   const ov = tm.outcomes.find(o => o.name === 'Over');
@@ -1067,11 +1311,21 @@ function App() {
                 }
                 books.push(bookEntry);
               }
-              // Best available spread per team across all books
               const bestHomeSpread = homeSpreads.length ? Math.max(...homeSpreads) : null;
               const bestAwaySpread = awaySpreads.length ? Math.max(...awaySpreads) : null;
               const avgTotal = totals.length ? Math.round(totals.reduce((a,b)=>a+b,0)/totals.length*2)/2 : null;
-              oddsMap[g.home_team.toLowerCase()] = { spread: bestHomeSpread, awaySpread: bestAwaySpread, total: avgTotal, books: books };
+
+              // For ML-primary sports: use best ML, convert to implied probability
+              const bestHomeML = homeMLs.length ? homeMLs.reduce((best, ml) => ml > best ? ml : best, -99999) : null;
+              const bestAwayML = awayMLs.length ? awayMLs.reduce((best, ml) => ml > best ? ml : best, -99999) : null;
+              const homeProb = mlToProb(bestHomeML);
+              const awayProb = mlToProb(bestAwayML);
+
+              oddsMap[g.home_team.toLowerCase()] = {
+                spread: bestHomeSpread, awaySpread: bestAwaySpread, total: avgTotal, books: books,
+                homeML: bestHomeML, awayML: bestAwayML, homeProb, awayProb,
+                mlPrimary: cfg.mlPrimary,
+              };
             }
             setStatus(gamesList.length + ' games, ' + Object.keys(oddsMap).length + ' with lines');
           } else if (oddsData && oddsData.message) {
@@ -1082,39 +1336,54 @@ function App() {
         setStatus(gamesList.length + ' games. Add API key for lines.');
       }
 
+
       const matchedGames = gamesList.map(g => {
         let spread = null, total = null, books = [];
-        const homeNorm = normalize(g.homeFullName);
+        const homeNorm = normalize(g.homeFullName, sport);
+        const homePro = normalizePro(g.homeFullName);
         let bestMatch = null, bestScore = 0;
         for (const [key, val] of Object.entries(oddsMap)) {
-          const keyNorm = normalize(key);
-          if (keyNorm === homeNorm) { bestMatch = val; bestScore = 100; break; }
-          if (keyNorm.includes(homeNorm) || homeNorm.includes(keyNorm)) {
+          const keyNorm = normalize(key, sport);
+          const keyPro = normalizePro(key);
+          if (keyNorm === homeNorm || keyPro === homePro) { bestMatch = val; bestScore = 100; break; }
+          if (keyNorm.includes(homeNorm) || homeNorm.includes(keyNorm) || keyPro.includes(homePro) || homePro.includes(keyPro)) {
             const score = Math.min(keyNorm.length, homeNorm.length);
             if (score > bestScore) { bestMatch = val; bestScore = score; }
           }
         }
-        let awaySpread = null;
-        if (bestMatch) { spread = bestMatch.spread; awaySpread = bestMatch.awaySpread; total = bestMatch.total; books = bestMatch.books || []; }
-        return { ...g, spread, awaySpread, total, books };
+        let awaySpread = null, homeML = null, awayML = null, homeProb = null, awayProb = null, isMlPrimary = false;
+        if (bestMatch) {
+          spread = bestMatch.spread; awaySpread = bestMatch.awaySpread; total = bestMatch.total; books = bestMatch.books || [];
+          homeML = bestMatch.homeML; awayML = bestMatch.awayML; homeProb = bestMatch.homeProb; awayProb = bestMatch.awayProb;
+          isMlPrimary = bestMatch.mlPrimary || false;
+        }
+        return { ...g, spread, awaySpread, total, books, homeML, awayML, homeProb, awayProb, isMlPrimary };
       });
 
+
       setGames(matchedGames);
+
 
       setGameData(prev => {
         const next = { ...prev };
         for (const g of matchedGames) {
           if (!next[g.id]) {
-            const histEntry = { time: Date.now(), homeSpread: g.spread, awaySpread: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null) };
+            const shouldSetOpen = g.spread !== null && g.spread !== 0;
+            const histEntry = { time: Date.now(), homeSpread: g.spread, awaySpread: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null), total: g.total, homeProb: g.homeProb || null, awayProb: g.awayProb || null };
             next[g.id] = {
-              homeOpenLine: g.spread, homeCurrentLine: g.spread, _lastApiHome: g.spread,
-              awayOpenLine: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null), awayCurrentLine: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null), _lastApiAway: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null),
-              openTotal: g.total, currentTotal: g.total, _lastApiTotal: g.total,
+              homeOpenLine: shouldSetOpen ? g.spread : null, homeCurrentLine: g.spread, _lastApiHome: g.spread,
+              awayOpenLine: shouldSetOpen ? (g.awaySpread != null ? g.awaySpread : -g.spread) : null, awayCurrentLine: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null), _lastApiAway: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null),
+              openTotal: (g.total !== null && g.total !== 0) ? g.total : null, currentTotal: g.total, _lastApiTotal: g.total,
               tickets: '', money: '', totalTickets: '', totalMoney: '',
               lockedHomeBS: null, lockedAwayBS: null, lockedOverBS: null, lockedUnderBS: null,
               openBooks: g.books || [],
-              homeClosingLine: null, awayClosingLine: null, closingTotal: null, _closingLocked: false,
+              homeClosingLine: null, awayClosingLine: null, closingTotal: null, closingHomeProb: null, closingAwayProb: null, _closingLocked: false,
               lineHistory: [histEntry], rlmSide: null, _notified: false, _graded: false,
+              // ML sport fields
+              homeML: g.homeML || null, awayML: g.awayML || null,
+              homeProb: g.homeProb || null, awayProb: g.awayProb || null,
+              openHomeProb: g.homeProb || null, openAwayProb: g.awayProb || null,
+              isMlPrimary: g.isMlPrimary || false,
             };
           } else {
             const gd = next[g.id];
@@ -1125,7 +1394,8 @@ function App() {
               gd.awayCurrentLine = gd.currentLine != null ? -parseFloat(gd.currentLine) : null;
               gd._lastApiAway = gd._lastApiLine != null ? -parseFloat(gd._lastApiLine) : null;
             }
-            if (gd.homeOpenLine == null && g.spread !== null) { gd.homeOpenLine = g.spread; gd.awayOpenLine = g.awaySpread != null ? g.awaySpread : -g.spread; }
+            if (gd.homeOpenLine == null && g.spread !== null && g.spread !== 0) { gd.homeOpenLine = g.spread; gd.awayOpenLine = g.awaySpread != null ? g.awaySpread : -g.spread; }
+            if (gd.openTotal == null && g.total !== null && g.total !== 0) { gd.openTotal = g.total; }
             if (g.spread !== null) {
               // Always update current/live lines from API — use per-team best spreads
               const prevHome = gd.homeCurrentLine;
@@ -1140,7 +1410,7 @@ function App() {
               const lastHist = gd.lineHistory.length > 0 ? gd.lineHistory[gd.lineHistory.length - 1] : null;
               // Always push if empty, or if line changed, or if >60s since last entry (periodic snapshot)
               if (!lastHist || lastHist.homeSpread !== newHomeSpread || lastHist.awaySpread !== newAwaySpread || (Date.now() - lastHist.time > 60000)) {
-                gd.lineHistory.push({ time: Date.now(), homeSpread: newHomeSpread, awaySpread: newAwaySpread });
+                gd.lineHistory.push({ time: Date.now(), homeSpread: newHomeSpread, awaySpread: newAwaySpread, total: g.total, homeProb: g.homeProb || null, awayProb: g.awayProb || null });
               }
             }
             if ((gd.openTotal == null) && g.total !== null) gd.openTotal = g.total;
@@ -1154,11 +1424,29 @@ function App() {
             if (gd.rlmSide === undefined) gd.rlmSide = null;
             if (gd._notified === undefined) gd._notified = false;
             if (gd._graded === undefined) gd._graded = false;
+            // Update ML fields for ML-primary sports
+            if (g.isMlPrimary) {
+              gd.isMlPrimary = true;
+              if (g.homeML != null) { gd.homeML = g.homeML; gd.awayML = g.awayML; }
+              if (g.homeProb != null) { gd.homeProb = g.homeProb; gd.awayProb = g.awayProb; }
+              if (gd.openHomeProb == null && g.homeProb != null) { gd.openHomeProb = g.homeProb; gd.openAwayProb = g.awayProb; }
+              // Track ML probability history for sparklines (if spread history wasn't already recorded)
+              if (g.spread === null && g.homeProb != null) {
+                if (!gd.lineHistory) gd.lineHistory = [];
+                const lastHist = gd.lineHistory.length > 0 ? gd.lineHistory[gd.lineHistory.length - 1] : null;
+                if (!lastHist || lastHist.homeProb !== g.homeProb || (Date.now() - lastHist.time > 60000)) {
+                  gd.lineHistory.push({ time: Date.now(), homeSpread: null, awaySpread: null, total: g.total, homeProb: g.homeProb, awayProb: g.awayProb });
+                }
+              }
+            }
             // Lock closing line AND BetScore when game starts (status changes to 'in' or 'post')
             if ((g.gameStatus === 'in' || g.gameStatus === 'post') && !gd._closingLocked) {
               gd.homeClosingLine = gd._lastApiHome;
               gd.awayClosingLine = gd._lastApiAway;
               gd.closingTotal = gd._lastApiTotal;
+              // Lock ML probabilities too
+              gd.closingHomeProb = gd.homeProb;
+              gd.closingAwayProb = gd.awayProb;
               gd._closingLocked = true;
               // Re-lock BetScore using the closing line (overwrite any pre-game lock)
               var lockCalc = calcAll(gd);
@@ -1172,12 +1460,14 @@ function App() {
         return next;
       });
 
+
       // Fetch betting splits data (non-blocking)
       fetchBettingSplits(matchedGames, false).then(splitsData => {
         if (Object.keys(splitsData).length > 0) {
           applySplitsToGames(splitsData, false);
         }
       }).catch(e => { console.log('[Splits] Catch:', e); setSplitsStatus('error'); });
+
 
       // Fetch Polymarket data (non-blocking)
       fetchPolymarket(matchedGames).then(pm => {
@@ -1194,27 +1484,47 @@ function App() {
             return false;
           };
           for (const g of matchedGames) {
-            const homeNorm = normalize(g.homeFullName);
-            const awayNorm = normalize(g.awayFullName);
-            const homeShort = normalize(g.homeName);
-            const awayShort = normalize(g.awayName);
-            let entry = pm[homeNorm] || pm[awayNorm] || pm[homeShort] || pm[awayShort];
+            const homeNorm = normalize(g.homeFullName, sport);
+            const awayNorm = normalize(g.awayFullName, sport);
+            const homeShort = normalize(g.homeName, sport);
+            const awayShort = normalize(g.awayName, sport);
+            // Pro-friendly: full name lowercased, last word (mascot)
+            const homePro = normalizePro(g.homeFullName);
+            const awayPro = normalizePro(g.awayFullName);
+            const homeProShort = normalizePro(g.homeName);
+            const awayProShort = normalizePro(g.awayName);
+            const homeLast = homePro.split(' ').pop();
+            const awayLast = awayPro.split(' ').pop();
+            // Try direct key lookup — many strategies
+            let entry = pm[homeNorm] || pm[awayNorm] || pm[homeShort] || pm[awayShort]
+              || pm[homePro] || pm[awayPro] || pm[homeProShort] || pm[awayProShort]
+              || pm['_raw_' + homePro] || pm['_raw_' + awayPro]
+              || pm['_raw_' + homeProShort] || pm['_raw_' + awayProShort];
+            // Try last-word mascot match (e.g. "lakers", "celtics")
+            if (!entry && homeLast && homeLast.length >= 4) entry = pm['_last_' + homeLast];
+            if (!entry && awayLast && awayLast.length >= 4) entry = pm['_last_' + awayLast];
+            // Fuzzy fallback — scan all keys
             if (!entry) {
+              const allNames = [homeNorm, awayNorm, homeShort, awayShort, homePro, awayPro, homeProShort, awayProShort];
               for (const [k, v] of Object.entries(pm)) {
                 if (k.startsWith('_title_')) {
                   const t = k.replace('_title_', '');
-                  if ((fuzzy(t, homeNorm) || fuzzy(t, homeShort)) && (fuzzy(t, awayNorm) || fuzzy(t, awayShort))) { entry = v; break; }
-                } else if (!k.startsWith('_raw_')) {
-                  if (fuzzy(k, homeNorm) || fuzzy(k, homeShort) || fuzzy(k, awayNorm) || fuzzy(k, awayShort)) { entry = v; break; }
+                  const homeMatch = allNames.some(n => fuzzy(t, n));
+                  const awayMatch = allNames.some(n => n !== allNames.find(x => fuzzy(t, x)) && fuzzy(t, n));
+                  if (homeMatch && awayMatch) { entry = v; break; }
+                } else if (!k.startsWith('_raw_') && !k.startsWith('_last_')) {
+                  if (allNames.some(n => fuzzy(k, n))) { entry = v; break; }
                 }
               }
             }
             if (entry) {
-              const o1Norm = normalize(entry.outcomes[0].name);
-              const o2Norm = normalize(entry.outcomes[1].name);
+              const o1Norm = normalizePro(entry.outcomes[0].name);
+              const o2Norm = normalizePro(entry.outcomes[1].name);
+              const o1Last = o1Norm.split(' ').pop();
+              const o2Last = o2Norm.split(' ').pop();
               let homeIdx = 0;
-              if (fuzzy(o2Norm, homeNorm) || fuzzy(o2Norm, homeShort)) homeIdx = 1;
-              else if (fuzzy(o1Norm, awayNorm) || fuzzy(o1Norm, awayShort)) homeIdx = 1;
+              if (fuzzy(o2Norm, homeNorm) || fuzzy(o2Norm, homeShort) || fuzzy(o2Norm, homePro) || fuzzy(o2Norm, homeProShort) || (o2Last.length >= 4 && o2Last === homeLast)) homeIdx = 1;
+              else if (fuzzy(o1Norm, awayNorm) || fuzzy(o1Norm, awayShort) || fuzzy(o1Norm, awayPro) || fuzzy(o1Norm, awayProShort) || (o1Last.length >= 4 && o1Last === awayLast)) homeIdx = 1;
               matched[g.id] = {
                 homeName: entry.outcomes[homeIdx].name,
                 homePrice: entry.outcomes[homeIdx].price,
@@ -1232,7 +1542,9 @@ function App() {
         }
       }).catch(e => { console.log('[Poly] Catch:', e); setPolyStatus('error'); });
 
+
       setLastFetch(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+
 
       // Auto-grade final games and fire notifications for sharp plays
       setGameData(prev => {
@@ -1242,23 +1554,34 @@ function App() {
           const gd = next[g.id];
           if (!gd) continue;
 
-          // Check for 3-check sharp plays and fire notification (first time only)
-          if (!gd._notified && (g.gameStatus === 'pre' || g.gameStatus === 'in')) {
+
+          // Check for 3-check sharp plays and fire notification (pre-game only)
+          if (!gd._notified && g.gameStatus === 'pre') {
             const all = calcAll(gd);
             const homeChecks = getChecks(all.home, gd.money);
             const awayMoney = gd.money !== '' ? String(100-(parseFloat(gd.money)||0)) : '';
             const awayChecks = getChecks(all.away, awayMoney);
             const isSharp = (homeChecks.filter(Boolean).length === 3) || (awayChecks.filter(Boolean).length === 3);
             if (isSharp && notificationsEnabled) {
-              const sharpSide = homeChecks.filter(Boolean).length === 3 ? g.homeName : g.awayName;
-              const bs = homeChecks.filter(Boolean).length === 3 ? all.home : all.away;
-              const msg = 'SHARP PLAY: ' + g.awayName + ' @ ' + g.homeName + ' - ' + sharpSide + ' ' + (bs?.score || 0);
+              const isHomeSharp = homeChecks.filter(Boolean).length === 3;
+              const sharpSide = isHomeSharp ? g.homeName : g.awayName;
+              const bs = isHomeSharp ? all.home : all.away;
+              let lineLabel;
+              if (gd.isMlPrimary) {
+                const ml = isHomeSharp ? gd.homeML : gd.awayML;
+                lineLabel = 'ML ' + (ml > 0 ? '+' : '') + ml;
+              } else {
+                const spreadLine = isHomeSharp ? gd.homeCurrentLine : gd.awayCurrentLine;
+                lineLabel = (spreadLine > 0 ? '+' : '') + spreadLine;
+              }
+              const msg = '🔥 SHARP PLAY: ' + sharpSide + ' (' + (bs?.score || 0) + ') | ' + g.awayName + ' @ ' + g.homeName + ' | ' + lineLabel;
               if ('Notification' in window && Notification.permission === 'granted') {
                 new Notification(msg, { icon: '🔥', tag: 'sharp-' + g.id });
               }
               gd._notified = true;
             }
           }
+
 
           // Auto-grade when game goes final
           if (!gd._graded && g.gameStatus === 'post' && g.homeScore && g.awayScore && gd._closingLocked) {
@@ -1273,18 +1596,45 @@ function App() {
               const homeScore = parseInt(g.homeScore) || 0;
               const awayScore = parseInt(g.awayScore) || 0;
               const margin = homeScore - awayScore;
-              const closingSpread = isHomeSharp ? parseFloat(gd.homeClosingLine) : parseFloat(gd.awayClosingLine);
-              const covered = isHomeSharp ? (margin > -closingSpread) : (margin < -closingSpread);
-              const push = Math.abs(margin + closingSpread) < 0.01;
+              let covered, push, clvBeat;
+              if (gd.isMlPrimary) {
+                // ML sports: sharp side wins if their team won outright
+                const homeWon = margin > 0;
+                const awayWon = margin < 0;
+                covered = isHomeSharp ? homeWon : awayWon;
+                push = margin === 0;
+                // CLV for ML: did closing probability move toward sharp side vs open?
+                const openProb = isHomeSharp ? gd.openHomeProb : gd.openAwayProb;
+                const closingProb = isHomeSharp ? (gd.homeProb || gd.openHomeProb) : (gd.awayProb || gd.openAwayProb);
+                clvBeat = openProb != null && closingProb != null && closingProb > openProb;
+              } else {
+                const closingSpread = isHomeSharp ? parseFloat(gd.homeClosingLine) : parseFloat(gd.awayClosingLine);
+                const openSpread = isHomeSharp ? parseFloat(gd.homeOpenLine) : parseFloat(gd.awayOpenLine);
+                covered = isHomeSharp ? (margin > -closingSpread) : (margin < -closingSpread);
+                push = Math.abs(margin + closingSpread) < 0.01;
+                // CLV: did the closing line move TOWARD the sharp side vs the open?
+                clvBeat = openSpread != null && closingSpread != null && !isNaN(openSpread) && !isNaN(closingSpread) && (
+                  (isHomeSharp && closingSpread < openSpread) ||
+                  (!isHomeSharp && closingSpread > openSpread)
+                );
+              }
               if (!push) {
                 setSharpRecords(prev => ({
                   wins: prev.wins + (covered ? 1 : 0),
                   losses: prev.losses + (!covered ? 1 : 0),
                   pushes: prev.pushes,
+                  clvBeats: prev.clvBeats + (clvBeat ? 1 : 0),
+                  clvMisses: prev.clvMisses + (!clvBeat ? 1 : 0),
                   history: [...prev.history, { gameId: g.id, date: new Date().toISOString(), result: covered ? 'W' : 'L', score: sharpScore }]
                 }));
               } else {
-                setSharpRecords(prev => ({...prev, pushes: prev.pushes + 1, history: [...prev.history, { gameId: g.id, date: new Date().toISOString(), result: 'P', score: sharpScore }]}));
+                setSharpRecords(prev => ({
+                  ...prev,
+                  pushes: prev.pushes + 1,
+                  clvBeats: prev.clvBeats + (clvBeat ? 1 : 0),
+                  clvMisses: prev.clvMisses + (!clvBeat ? 1 : 0),
+                  history: [...prev.history, { gameId: g.id, date: new Date().toISOString(), result: 'P', score: sharpScore }]
+                }));
               }
               gd._graded = true;
               gradesUpdated = true;
@@ -1295,7 +1645,8 @@ function App() {
       });
     } catch(e) { setStatus('Error: ' + (e.message || 'unknown')); }
     setLoading(false);
-  }, [apiKey, notificationsEnabled]);
+  }, [apiKey, notificationsEnabled, sport]);
+
 
   // ── BetScore calc for one side (takes pre-computed lineMove) ──
   const calcSide = (tickets, money, lineMove) => {
@@ -1307,17 +1658,33 @@ function App() {
     return { score, lineMove, diff };
   };
 
+
   // ── All 4 BetScores for a game ──
   const calcAll = (gd) => {
     if (!gd) return { home: null, away: null, over: null, under: null };
-    // Spreads: lineMove = open - effective (use closing line if locked, otherwise current)
-    const homeEffective = gd._closingLocked ? (gd.homeClosingLine != null ? gd.homeClosingLine : gd.homeCurrentLine) : gd.homeCurrentLine;
-    const homeMove = (parseFloat(gd.homeOpenLine) || 0) - (parseFloat(homeEffective) || 0);
+
+    let homeMove, awayMove;
+    if (gd.isMlPrimary && gd.openHomeProb != null && gd.homeProb != null) {
+      // ML sports: convert probability movement to pseudo-spread equivalent
+      // A 3% probability shift ≈ 0.9 spread points (probToSpreadEquiv)
+      // When game is locked, use closing probability (not live which keeps changing)
+      const homeClosingProb = gd._closingLocked ? (gd.closingHomeProb != null ? gd.closingHomeProb : gd.homeProb) : gd.homeProb;
+      const awayClosingProb = gd._closingLocked ? (gd.closingAwayProb != null ? gd.closingAwayProb : gd.awayProb) : gd.awayProb;
+      const homeProbDelta = (homeClosingProb || 0) - (gd.openHomeProb || 0);
+      const awayProbDelta = (awayClosingProb || 0) - (gd.openAwayProb || 0);
+      homeMove = probToSpreadEquiv(homeProbDelta);
+      awayMove = probToSpreadEquiv(awayProbDelta);
+    } else {
+      // Spread sports: lineMove = open - effective (use closing line if locked, otherwise current)
+      const homeEffective = gd._closingLocked ? (gd.homeClosingLine != null ? gd.homeClosingLine : gd.homeCurrentLine) : gd.homeCurrentLine;
+      homeMove = (parseFloat(gd.homeOpenLine) || 0) - (parseFloat(homeEffective) || 0);
+      const awayEffective = gd._closingLocked ? (gd.awayClosingLine != null ? gd.awayClosingLine : gd.awayCurrentLine) : gd.awayCurrentLine;
+      awayMove = (parseFloat(gd.awayOpenLine) || 0) - (parseFloat(awayEffective) || 0);
+    }
+
     const home = calcSide(gd.tickets, gd.money, homeMove);
     const awayTickets = gd.tickets !== '' ? String(100 - (parseFloat(gd.tickets)||0)) : '';
     const awayMoney = gd.money !== '' ? String(100 - (parseFloat(gd.money)||0)) : '';
-    const awayEffective = gd._closingLocked ? (gd.awayClosingLine != null ? gd.awayClosingLine : gd.awayCurrentLine) : gd.awayCurrentLine;
-    const awayMove = (parseFloat(gd.awayOpenLine) || 0) - (parseFloat(awayEffective) || 0);
     const away = calcSide(awayTickets, awayMoney, awayMove);
     // Totals: lineMove = effective - open (going up = good for over, use closing line if locked)
     const totalEffective = gd._closingLocked ? (gd.closingTotal != null ? gd.closingTotal : gd.currentTotal) : gd.currentTotal;
@@ -1328,6 +1695,7 @@ function App() {
     const under = calcSide(underTickets, underMoney, -overMove);
     return { home, away, over, under };
   };
+
 
   // ── 3 checkmarks per Nick's system ──
   // 1. Money% exceeds Tickets% by >14 on this team (sharp money signal)
@@ -1342,6 +1710,7 @@ function App() {
       m < 50,
     ];
   };
+
 
   // ── Best line across all books (best number, then best juice as tiebreak) ──
   const getBestLine = (books, side) => {
@@ -1360,9 +1729,11 @@ function App() {
     return best;
   };
 
+
   const togglePin = (gameId) => {
     setPinnedGames(prev => prev.includes(gameId) ? prev.filter(id => id !== gameId) : [...prev, gameId]);
   };
+
 
   const updateGameData = (id, field, value) => {
     setGameData(prev => {
@@ -1384,10 +1755,13 @@ function App() {
     });
   };
 
+
   const scoreColor = (s) => s >= 70 ? 'c-green' : s >= 50 ? 'c-yellow' : 'c-red';
-  const verdict = (s) => s >= 70 ? { t: 'PLAY', c: 'verdict-play' } : s >= 50 ? { t: 'LEAN', c: 'verdict-lean' } : { t: 'PASS', c: 'verdict-pass' };
+  const verdict = (s) => s >= 90 ? { t: 'MAX PLAY', c: 'verdict-max' } : s >= 70 ? { t: 'PLAY', c: 'verdict-play' } : s >= 50 ? { t: 'LEAN', c: 'verdict-lean' } : { t: 'PASS', c: 'verdict-pass' };
+
 
   const conferences = ['all', ...new Set(games.map(g => g.conference).filter(c => c && c.length > 0))].sort((a, b) => a === 'all' ? -1 : b === 'all' ? 1 : a.localeCompare(b));
+
 
   const countSharpChecks = (gameId) => {
     const gd = gameData[gameId] || {};
@@ -1397,6 +1771,7 @@ function App() {
     return (hc.filter(Boolean).length === 3) || (ac.filter(Boolean).length === 3);
   };
 
+
   const filteredGames = (() => {
     var conf = confFilter === 'all' ? [...games] : games.filter(g => g.conference === confFilter);
     if (sharpOnlyFilter) {
@@ -1404,6 +1779,7 @@ function App() {
     }
     return conf;
   })();
+
 
   const sharpPlayCount = games.filter(g => countSharpChecks(g.id)).length;
   const bestSharpPlay = (() => {
@@ -1419,6 +1795,7 @@ function App() {
     return best;
   })();
 
+
   const sortedGames = [...filteredGames].sort((a, b) => {
     // Status grouping: live ('in') first, then upcoming ('pre'), then finished ('post')
     const statusOrder = (status) => {
@@ -1430,6 +1807,7 @@ function App() {
     const aStatusOrder = statusOrder(a.gameStatus);
     const bStatusOrder = statusOrder(b.gameStatus);
     if (aStatusOrder !== bStatusOrder) return aStatusOrder - bStatusOrder;
+
 
     // Within same status group, apply secondary sort
     if (sortBy === 'betscore') {
@@ -1465,6 +1843,7 @@ function App() {
     return 0;
   });
 
+
   const plays = games.filter(g => {
     const all = calcAll(gameData[g.id]);
     return (all.home && all.home.score >= 70) || (all.away && all.away.score >= 70);
@@ -1481,6 +1860,7 @@ function App() {
     return acc;
   }, { w: 0, l: 0, p: 0 });
 
+
   // ── Export ──
   const exportToExcel = () => {
     if (!window.XLSX) { alert('SheetJS not loaded yet.'); return; }
@@ -1495,7 +1875,8 @@ function App() {
       const all = calcAll(gd);
       const t = gd.tickets !== '' ? parseFloat(gd.tickets) : '';
       const m = gd.money !== '' ? parseFloat(gd.money) : '';
-      const cl = gd.homeCurrentLine != null ? parseFloat(gd.homeCurrentLine) : '';
+      const cl = gd.homeCurrentLine != null ? parseFloat(gd.homeCurrentLine) :
+                 (gd.isMlPrimary && gd.homeML != null ? 'ML ' + (gd.homeML > 0 ? '+' : '') + gd.homeML + '/' + (gd.awayML > 0 ? '+' : '') + gd.awayML : '');
       const ct = gd.currentTotal != null ? parseFloat(gd.currentTotal) : '';
       rows.push([
         ds+' '+game.time,
@@ -1512,6 +1893,7 @@ function App() {
     XLSX.writeFile(wb, 'BetScore_'+ds.replace(/\//g,'-')+'.xlsx');
   };
 
+
   const placeBet = (gameId, side) => { setBets(prev => ({...prev, [gameId]: { side, result: null }})); };
   const settleBet = (gameId, result) => {
     setBets(prev => { const bet = prev[gameId]; if(!bet) return prev; return {...prev, [gameId]: {...bet, result}}; });
@@ -1521,6 +1903,7 @@ function App() {
       const bestScore = Math.max(all.home?.score ?? 0, all.away?.score ?? 0);
       setHistory(prev => [...prev, { date: new Date().toLocaleDateString(), game: game.awayName+' @ '+game.homeName, side: bets[gameId]?.side || '?', betScore: bestScore, result }]);
 
+
       // Track sharp plays
       if (countSharpChecks(gameId) && game.gameStatus === 'post') {
         var didWin = false;
@@ -1529,14 +1912,17 @@ function App() {
         const sharpHome = hc.filter(Boolean).length === 3;
         const sharpAway = ac.filter(Boolean).length === 3;
 
+
         if (sharpHome || sharpAway) {
           const spread = parseFloat(gd.homeCurrentLine) || 0;
           const homeFinal = parseInt(game.homeScore) || 0;
           const awayFinal = parseInt(game.awayScore) || 0;
           const homeMargin = homeFinal - awayFinal;
 
+
           if (sharpHome) didWin = homeMargin > spread;
           else if (sharpAway) didWin = -homeMargin > spread;
+
 
           setSharpRecords(prev => ({
             ...prev,
@@ -1549,6 +1935,7 @@ function App() {
     }
   };
 
+
   // ── Get color class for BetScore gradient ──
   const getScoreClass = (s) => {
     if (s >= 120) return 'score-120plus';
@@ -1560,67 +1947,265 @@ function App() {
     return 'score-neg80plus';
   };
 
-  // ── Render helper: Line History Sparkline ──
-  const renderSparkline = (lineHistory) => {
+
+  // ── SparklineChart Component with Tooltip Support ──
+  const SparklineChart = ({ lineHistory, openLine, color, dataKey }) => {
+    const [hoverIdx, setHoverIdx] = useState(null);
+    const isProb = dataKey === 'homeProb' || dataKey === 'awayProb';
+    const fmtVal = (v) => isProb ? Math.round(v * 100) + '%' : (v > 0 ? '+' : '') + (Number.isInteger(v) ? v : v.toFixed(1));
     if (!lineHistory || lineHistory.length < 1) return null;
-    const width = 280, height = 60, padding = 10;
-    const inner = { x: padding, y: padding, w: width - padding * 2, h: height - padding * 2 };
-    const spreads = lineHistory.map(e => e.homeSpread);
-    const goldColor = '#ff9f0a';
+    const width = 300, height = 80, padL = 8, padR = 40, padT = 10, padB = 14;
+    const inner = { x: padL, y: padT, w: width - padL - padR, h: height - padT - padB };
+    const openVal = openLine != null ? parseFloat(openLine) : null;
+    const filtered = openVal != null ? lineHistory.filter(e => !(e[dataKey] === 0 && openVal !== 0)) : lineHistory;
+    // Remove entries where the dataKey is missing/undefined (e.g., old entries without total)
+    const withData = filtered.filter(e => e[dataKey] != null);
+    const history = withData.length > 0 ? withData : filtered.filter(e => e[dataKey] != null);
+    if (history.length < 1) return null;
+    const values = history.map(e => e[dataKey]);
+    const goldColor = color || '#ff9f0a';
+    const lineColor = color === '#5ac8fa' ? '#3a9fd8' : '#e8920a';
     const textMutedColor = '#a0a0a5';
-    const gradId = 'sparkGrad_' + Math.random().toString(36).substr(2, 9);
-    const firstVal = spreads[0], lastVal = spreads[spreads.length - 1];
-    // Single point — show a dot with the current value
+    const uid = 'spark_' + Math.random().toString(36).substr(2, 9);
+    const firstVal = values[0], lastVal = values[values.length - 1];
+
     if (lineHistory.length === 1) {
       return (
-        <div style={{textAlign:'center', padding:'8px 0'}}>
-          <svg width={width} height={height} style={{backgroundColor: 'rgba(255,159,10,0.04)', borderRadius: '8px'}}>
-            <circle cx={width/2} cy={height/2} r="4" fill={goldColor} />
-            <text x={width/2} y={height/2 - 10} fontSize="11" fill={textMutedColor} fontFamily="monospace" textAnchor="middle">{firstVal > 0 ? '+' : ''}{firstVal}</text>
-            <text x={width/2} y={height - 6} fontSize="9" fill="rgba(160,160,165,0.5)" fontFamily="sans-serif" textAnchor="middle">Refresh again to build chart</text>
+        <div style={{textAlign:'center', padding:'4px 0'}}>
+          <svg width={width} height={height} viewBox={'0 0 ' + width + ' ' + height} style={{borderRadius: '8px', overflow: 'visible'}}>
+            <rect x="0" y="0" width={width} height={height} rx="8" fill="rgba(30,30,34,0.9)" />
+            <line x1={padL} y1={height/2} x2={width - padR} y2={height/2} stroke="rgba(255,255,255,0.12)" strokeWidth="1" strokeDasharray="4,3" />
+            <circle cx={(padL + width - padR) / 2} cy={height/2} r="4" fill={goldColor} />
+            <text x={(padL + width - padR) / 2} y={height/2 - 12} fontSize="11" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace" textAnchor="middle">{firstVal > 0 ? '+' : ''}{firstVal}</text>
+            <text x={(padL + width - padR) / 2} y={height - 4} fontSize="9" fill="rgba(160,160,165,0.4)" fontFamily="'Inter', sans-serif" textAnchor="middle">Refresh to build chart</text>
           </svg>
         </div>
       );
     }
-    const min = Math.min(...spreads);
-    const max = Math.max(...spreads);
+
+    const baselineVal = openVal != null ? openVal : firstVal;
+    const rawMin = Math.min(...values);
+    const rawMax = Math.max(...values);
+    const min = Math.min(rawMin, baselineVal);
+    const max = Math.max(rawMax, baselineVal);
     const range = max - min || 1;
-    const points = lineHistory.map((e, i) => {
-      const x = inner.x + (i / (lineHistory.length - 1)) * inner.w;
-      const y = inner.y + inner.h - ((e.homeSpread - min) / range) * inner.h;
+    const isFlat = rawMin === rawMax;
+    const baselineY = isFlat ? (inner.y + inner.h / 2) : (inner.y + inner.h - ((baselineVal - min) / range) * inner.h);
+    const points = history.map((e, i) => {
+      const x = inner.x + (i / (history.length - 1)) * inner.w;
+      const y = isFlat ? (inner.y + inner.h / 2) : (inner.y + inner.h - ((e[dataKey] - min) / range) * inner.h);
       return [x, y];
     });
     const pathStr = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-    // If all values are the same (flat line), center the line vertically
-    const isFlat = min === max;
+    const areaPath = pathStr + 'L' + points[points.length-1][0].toFixed(1) + ',' + baselineY.toFixed(1) + 'L' + inner.x + ',' + baselineY.toFixed(1) + 'Z';
+
+    const yTicks = [];
+    if (!isFlat) {
+      const step = range / 3;
+      for (let i = 0; i <= 3; i++) {
+        const val = max - i * step;
+        const y = inner.y + (i / 3) * inner.h;
+        yTicks.push({ val, y });
+      }
+    }
+
+    const moved = lastVal - firstVal;
+    const endDotColor = moved > 0 ? '#34c759' : moved < 0 ? '#ff453a' : goldColor;
+
+    const hoverPoint = hoverIdx != null && points[hoverIdx] ? { x: points[hoverIdx][0], y: points[hoverIdx][1], value: values[hoverIdx], time: history[hoverIdx].time } : null;
+    const hoverTime = hoverPoint ? new Date(hoverPoint.time).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) : '';
+
     return (
       <div style={{textAlign:'center', padding:'4px 0'}}>
-        <svg width={width} height={height} style={{backgroundColor: 'rgba(255,159,10,0.04)', borderRadius: '8px', overflow: 'visible'}}>
+        <svg width={width} height={height} viewBox={'0 0 ' + width + ' ' + height} style={{borderRadius: '8px', overflow: 'visible'}} onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          let closest = 0;
+          let closestDist = Math.abs(points[0][0] - x);
+          for (let i = 1; i < points.length; i++) {
+            const dist = Math.abs(points[i][0] - x);
+            if (dist < closestDist) {
+              closestDist = dist;
+              closest = i;
+            }
+          }
+          if (closestDist < 20) setHoverIdx(closest);
+        }} onMouseLeave={() => setHoverIdx(null)}>
           <defs>
-            <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="rgba(255,159,10,0.3)" />
-              <stop offset="100%" stopColor="rgba(255,159,10,0.05)" />
+            <linearGradient id={uid + '_above'} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor={color === '#5ac8fa' ? 'rgba(90,200,250,0.45)' : 'rgba(255,159,10,0.45)'} />
+              <stop offset="100%" stopColor={color === '#5ac8fa' ? 'rgba(90,200,250,0.03)' : 'rgba(255,159,10,0.03)'} />
             </linearGradient>
+            <linearGradient id={uid + '_below'} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor={color === '#5ac8fa' ? 'rgba(90,200,250,0.03)' : 'rgba(255,159,10,0.03)'} />
+              <stop offset="100%" stopColor={color === '#5ac8fa' ? 'rgba(90,200,250,0.35)' : 'rgba(255,159,10,0.35)'} />
+            </linearGradient>
+            <clipPath id={uid + '_clipAbove'}>
+              <rect x="0" y="0" width={width} height={baselineY.toFixed(1)} />
+            </clipPath>
+            <clipPath id={uid + '_clipBelow'}>
+              <rect x="0" y={baselineY.toFixed(1)} width={width} height={height - baselineY} />
+            </clipPath>
           </defs>
-          <path d={pathStr} stroke={goldColor} strokeWidth="2" fill="none" />
-          {!isFlat && <path d={pathStr + 'L' + points[points.length-1][0].toFixed(1) + ',' + (inner.y + inner.h) + 'L' + inner.x + ',' + (inner.y + inner.h) + 'Z'} fill={'url(#' + gradId + ')'} />}
-          <line x1={inner.x} y1={inner.y + inner.h / 2} x2={inner.x + inner.w} y2={inner.y + inner.h / 2} stroke="rgba(255,159,10,0.15)" strokeWidth="1" strokeDasharray="2,2" />
-          <text x={inner.x + 2} y={inner.y + 12} fontSize="10" fill={textMutedColor} fontFamily="monospace">{firstVal > 0 ? '+' : ''}{firstVal}</text>
-          <text x={inner.x + inner.w - 2} y={inner.y + 12} fontSize="10" fill={goldColor} fontFamily="monospace" textAnchor="end">{lastVal > 0 ? '+' : ''}{lastVal}</text>
-          <text x={width/2} y={height - 4} fontSize="9" fill="rgba(160,160,165,0.4)" fontFamily="sans-serif" textAnchor="middle">{lineHistory.length} pts</text>
+          <rect x="0" y="0" width={width} height={height} rx="8" fill="rgba(25,25,30,0.95)" />
+          {yTicks.map((t, i) => <line key={i} x1={inner.x} y1={t.y.toFixed(1)} x2={inner.x + inner.w} y2={t.y.toFixed(1)} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />)}
+          <line x1={inner.x} y1={baselineY.toFixed(1)} x2={inner.x + inner.w} y2={baselineY.toFixed(1)} stroke="rgba(255,255,255,0.18)" strokeWidth="1" strokeDasharray="5,4" />
+          {!isFlat && <path d={areaPath} fill={'url(#' + uid + '_above)'} clipPath={'url(#' + uid + '_clipAbove)'} />}
+          {!isFlat && <path d={areaPath} fill={'url(#' + uid + '_below)'} clipPath={'url(#' + uid + '_clipBelow)'} />}
+          <path d={pathStr} stroke={color === '#5ac8fa' ? 'rgba(90,200,250,0.25)' : 'rgba(255,159,10,0.25)'} strokeWidth="6" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+          <path d={pathStr} stroke={lineColor} strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+          <circle cx={points[0][0]} cy={points[0][1]} r="3" fill={goldColor} stroke="rgba(0,0,0,0.5)" strokeWidth="1" />
+          <circle cx={points[points.length-1][0]} cy={points[points.length-1][1]} r="4" fill={endDotColor} stroke="rgba(0,0,0,0.5)" strokeWidth="1" />
+          <circle cx={points[points.length-1][0]} cy={points[points.length-1][1]} r="7" fill="none" stroke={endDotColor} strokeWidth="1" opacity="0.4" />
+          {yTicks.map((t, i) => <text key={'yt'+i} x={inner.x + inner.w + 6} y={t.y + 3.5} fontSize="8" fill="rgba(160,160,165,0.5)" fontFamily="'JetBrains Mono', monospace">{fmtVal(t.val)}</text>)}
+          <text x={inner.x + 2} y={points[0][1] - 8} fontSize="10" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace">{firstVal > 0 ? '+' : ''}{firstVal}</text>
+          <text x={points[points.length-1][0]} y={points[points.length-1][1] - 10} fontSize="10" fill={endDotColor} fontFamily="'JetBrains Mono', monospace" textAnchor="end" fontWeight="700">{lastVal > 0 ? '+' : ''}{lastVal}</text>
+          {hoverPoint && (
+            <>
+              <line x1={hoverPoint.x} y1={padT} x2={hoverPoint.x} y2={padT + inner.h} stroke={goldColor} strokeWidth="1.5" opacity="0.6" />
+              <circle cx={hoverPoint.x} cy={hoverPoint.y} r="5" fill="none" stroke={goldColor} strokeWidth="2" opacity="0.8" />
+              <rect x={Math.max(padL, hoverPoint.x - 45)} y={hoverPoint.y - 28} width="90" height="24" rx="4" fill="rgba(0,0,0,0.8)" stroke={goldColor} strokeWidth="1" />
+              <text x={hoverPoint.x} y={hoverPoint.y - 18} fontSize="10" fill={goldColor} fontFamily="'JetBrains Mono', monospace" textAnchor="middle" fontWeight="700">{fmtVal(hoverPoint.value)}</text>
+              <text x={hoverPoint.x} y={hoverPoint.y - 8} fontSize="8" fill="rgba(160,160,165,0.8)" fontFamily="'Inter', sans-serif" textAnchor="middle">{hoverTime}</text>
+            </>
+          )}
+          <text x={(padL + width - padR) / 2} y={height - 2} fontSize="8" fill="rgba(160,160,165,0.3)" fontFamily="'Inter', sans-serif" textAnchor="middle">{history.length} pts</text>
         </svg>
       </div>
     );
   };
 
+  // ── Render helper: Line History Sparkline (legacy wrapper) ──
+  const renderSparkline = (lineHistory, openLine) => {
+    return <SparklineChart lineHistory={lineHistory} openLine={openLine} color="#ff9f0a" dataKey="homeSpread" />;
+  };
+
+  // ── Render helper: Total Sparkline ──
+  const renderTotalSparkline = (lineHistory, openTotal) => {
+    return <SparklineChart lineHistory={lineHistory} openLine={openTotal} color="#5ac8fa" dataKey="total" />;
+  };
+
+  // ── OLD renderSparkline for reference (can be removed) ──
+  const renderSparklineOld = (lineHistory, openLine) => {
+    if (!lineHistory || lineHistory.length < 1) return null;
+    const width = 300, height = 80, padL = 8, padR = 40, padT = 10, padB = 14;
+    const inner = { x: padL, y: padT, w: width - padL - padR, h: height - padT - padB };
+    // Filter out bogus zero entries that appear before real data
+    const openVal = openLine != null ? parseFloat(openLine) : null;
+    const filtered = openVal != null ? lineHistory.filter(e => !(e.homeSpread === 0 && openVal !== 0)) : lineHistory;
+    const history = filtered.length > 0 ? filtered : lineHistory;
+    const spreads = history.map(e => e.homeSpread);
+    const goldColor = '#ff9f0a';
+    const lineColor = '#e8920a';
+    const textMutedColor = '#a0a0a5';
+    const uid = 'spark_' + Math.random().toString(36).substr(2, 9);
+    const firstVal = spreads[0], lastVal = spreads[spreads.length - 1];
+    // Single point — show a dot with the current value
+    if (lineHistory.length === 1) {
+      return (
+        <div style={{textAlign:'center', padding:'4px 0'}}>
+          <svg width={width} height={height} viewBox={'0 0 ' + width + ' ' + height} style={{borderRadius: '8px', overflow: 'visible'}}>
+            <rect x="0" y="0" width={width} height={height} rx="8" fill="rgba(30,30,34,0.9)" />
+            <line x1={padL} y1={height/2} x2={width - padR} y2={height/2} stroke="rgba(255,255,255,0.12)" strokeWidth="1" strokeDasharray="4,3" />
+            <circle cx={(padL + width - padR) / 2} cy={height/2} r="4" fill={goldColor} />
+            <text x={(padL + width - padR) / 2} y={height/2 - 12} fontSize="11" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace" textAnchor="middle">{firstVal > 0 ? '+' : ''}{firstVal}</text>
+            <text x={(padL + width - padR) / 2} y={height - 4} fontSize="9" fill="rgba(160,160,165,0.4)" fontFamily="'Inter', sans-serif" textAnchor="middle">Refresh to build chart</text>
+          </svg>
+        </div>
+      );
+    }
+    const rawMin = Math.min(...spreads);
+    const rawMax = Math.max(...spreads);
+    // Baseline at the opening line — dashed line reference
+    const baselineVal = openVal != null ? openVal : firstVal;
+    // Include the baseline (opening line) in the range so it always fits on screen
+    const min = Math.min(rawMin, baselineVal);
+    const max = Math.max(rawMax, baselineVal);
+    const range = max - min || 1;
+    const isFlat = rawMin === rawMax;
+    const baselineY = isFlat ? (inner.y + inner.h / 2) : (inner.y + inner.h - ((baselineVal - min) / range) * inner.h);
+    const points = history.map((e, i) => {
+      const x = inner.x + (i / (history.length - 1)) * inner.w;
+      const y = isFlat ? (inner.y + inner.h / 2) : (inner.y + inner.h - ((e.homeSpread - min) / range) * inner.h);
+      return [x, y];
+    });
+    const pathStr = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    // Area fill from line down to baseline (not bottom edge)
+    const areaPath = pathStr + 'L' + points[points.length-1][0].toFixed(1) + ',' + baselineY.toFixed(1) + 'L' + inner.x + ',' + baselineY.toFixed(1) + 'Z';
+    // Y-axis tick values for right side labels
+    const yTicks = [];
+    if (!isFlat) {
+      const step = range / 3;
+      for (let i = 0; i <= 3; i++) {
+        const val = max - i * step;
+        const y = inner.y + (i / 3) * inner.h;
+        yTicks.push({ val, y });
+      }
+    }
+    // End dot color: green if moved up, red if down, gold if flat
+    const moved = lastVal - firstVal;
+    const endDotColor = moved > 0 ? '#34c759' : moved < 0 ? '#ff453a' : goldColor;
+    return (
+      <div style={{textAlign:'center', padding:'4px 0'}}>
+        <svg width={width} height={height} viewBox={'0 0 ' + width + ' ' + height} style={{borderRadius: '8px', overflow: 'visible'}}>
+          <defs>
+            <linearGradient id={uid + '_above'} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="rgba(255,159,10,0.45)" />
+              <stop offset="100%" stopColor="rgba(255,159,10,0.03)" />
+            </linearGradient>
+            <linearGradient id={uid + '_below'} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="rgba(255,159,10,0.03)" />
+              <stop offset="100%" stopColor="rgba(255,159,10,0.35)" />
+            </linearGradient>
+            <clipPath id={uid + '_clipAbove'}>
+              <rect x="0" y="0" width={width} height={baselineY.toFixed(1)} />
+            </clipPath>
+            <clipPath id={uid + '_clipBelow'}>
+              <rect x="0" y={baselineY.toFixed(1)} width={width} height={height - baselineY} />
+            </clipPath>
+          </defs>
+          {/* Dark background */}
+          <rect x="0" y="0" width={width} height={height} rx="8" fill="rgba(25,25,30,0.95)" />
+          {/* Subtle grid lines */}
+          {yTicks.map((t, i) => <line key={i} x1={inner.x} y1={t.y.toFixed(1)} x2={inner.x + inner.w} y2={t.y.toFixed(1)} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />)}
+          {/* Dashed baseline at opening value */}
+          <line x1={inner.x} y1={baselineY.toFixed(1)} x2={inner.x + inner.w} y2={baselineY.toFixed(1)} stroke="rgba(255,255,255,0.18)" strokeWidth="1" strokeDasharray="5,4" />
+          {/* Area fill — above baseline */}
+          {!isFlat && <path d={areaPath} fill={'url(#' + uid + '_above)'} clipPath={'url(#' + uid + '_clipAbove)'} />}
+          {/* Area fill — below baseline */}
+          {!isFlat && <path d={areaPath} fill={'url(#' + uid + '_below)'} clipPath={'url(#' + uid + '_clipBelow)'} />}
+          {/* Glow behind the line */}
+          <path d={pathStr} stroke="rgba(255,159,10,0.25)" strokeWidth="6" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+          {/* Main line */}
+          <path d={pathStr} stroke={lineColor} strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+          {/* Start dot */}
+          <circle cx={points[0][0]} cy={points[0][1]} r="3" fill={goldColor} stroke="rgba(0,0,0,0.5)" strokeWidth="1" />
+          {/* End dot — green/red/gold by direction */}
+          <circle cx={points[points.length-1][0]} cy={points[points.length-1][1]} r="4" fill={endDotColor} stroke="rgba(0,0,0,0.5)" strokeWidth="1" />
+          <circle cx={points[points.length-1][0]} cy={points[points.length-1][1]} r="7" fill="none" stroke={endDotColor} strokeWidth="1" opacity="0.4" />
+          {/* Y-axis labels on the right */}
+          {yTicks.map((t, i) => <text key={'yt'+i} x={inner.x + inner.w + 6} y={t.y + 3.5} fontSize="8" fill="rgba(160,160,165,0.5)" fontFamily="'JetBrains Mono', monospace">{t.val > 0 ? '+' : ''}{t.val.toFixed(1)}</text>)}
+          {/* Start and end value labels */}
+          <text x={inner.x + 2} y={points[0][1] - 8} fontSize="10" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace">{firstVal > 0 ? '+' : ''}{firstVal}</text>
+          <text x={points[points.length-1][0]} y={points[points.length-1][1] - 10} fontSize="10" fill={endDotColor} fontFamily="'JetBrains Mono', monospace" textAnchor="end" fontWeight="700">{lastVal > 0 ? '+' : ''}{lastVal}</text>
+          {/* Point count */}
+          <text x={(padL + width - padR) / 2} y={height - 2} fontSize="8" fill="rgba(160,160,165,0.3)" fontFamily="'Inter', sans-serif" textAnchor="middle">{history.length} pts</text>
+        </svg>
+      </div>
+    );
+  };
+
+
   // ── Render helper: BetScore card ──
   const BsCard = ({ label, labelColor, bs, locked, checks }) => {
-    if (!bs) return (
+    // If game is locked and we have a locked score, show ONLY the locked score (no live recalculation)
+    const showScore = locked != null ? locked : (bs ? bs.score : null);
+    if (!bs && locked == null) return (
       <div className="bs-card" style={{opacity:0.4}}>
         <div className="bs-side-label" style={{color: labelColor || 'var(--text-dim)', textAlign:'center', padding:'12px 0'}}>{label}</div>
       </div>
     );
-    const v = verdict(bs.score);
+    const v = verdict(showScore || 0);
     const ch = checks || [false,false,false];
     return (
       <div className="bs-card">
@@ -1633,21 +2218,16 @@ function App() {
           </div>
         </div>
         <div className="bs-scores">
-          {locked != null && (
-            <div className="bs-locked-wrap">
-              <div className="bs-locked-label">Locked</div>
-              <div className="bs-locked-num">{locked}</div>
-            </div>
-          )}
           <div className="bs-live-wrap">
-            <div className="bs-live-label">Live</div>
-            <div className={'bs-live-num ' + getScoreClass(bs.score)}>{bs.score}</div>
+            <div className="bs-live-label">{locked != null ? 'Final' : 'Live'}</div>
+            <div className={'bs-live-num ' + getScoreClass(showScore || 0)}>{showScore}</div>
           </div>
         </div>
         <span className={'verdict-chip ' + v.c}>{v.t}</span>
       </div>
     );
   };
+
 
   const renderGameCard = (game) => {
     const gd = gameData[game.id] || {};
@@ -1663,13 +2243,16 @@ function App() {
     const openBestHome = getBestLine(gd.openBooks || [], 'home');
     const openBestAway = getBestLine(gd.openBooks || [], 'away');
     const hasAnyScore = all.home || all.away;
-    const spreadDiff = (gd.tickets !== '' && gd.money !== '') ? (parseFloat(gd.money)||0) - (parseFloat(gd.tickets)||0) : null;
+    const spreadDiff = (gd.tickets !== '' && gd.tickets != null && gd.money !== '' && gd.money != null) ? (parseFloat(gd.money)||0) - (parseFloat(gd.tickets)||0) : null;
     const totalDiff = (gd.totalTickets !== '' && gd.totalTickets != null && gd.totalMoney !== '' && gd.totalMoney != null) ? (parseFloat(gd.totalMoney)||0) - (parseFloat(gd.totalTickets)||0) : null;
+
 
     // Check if sharp play (3 checks on either side)
     const isSharp = (homeChecks.filter(Boolean).length === 3) || (awayChecks.filter(Boolean).length === 3);
-    const isExpanded = expandedCards[game.id] !== false && (expandedCards[game.id] === true || isSharp);
+    const hasLines = game.spread !== null;
+    const isExpanded = expandedCards[game.id] === true || (expandedCards[game.id] !== false && isSharp);
     const toggleExpand = () => setExpandedCards(prev => ({...prev, [game.id]: !isExpanded}));
+
 
     return (
       <div className={'game-card ' + (hasAnyScore ? 'has-score' : '')} key={game.id} style={{position: 'relative'}}>
@@ -1679,7 +2262,7 @@ function App() {
             <div className="game-header-left">
               <span className="chevron" style={{marginRight: '4px'}}>{isExpanded ? '▼' : '▶'}</span>
               <button className="pin-btn" onClick={(e) => { e.stopPropagation(); togglePin(game.id); }} title={pinnedGames.includes(game.id) ? 'Unpin' : 'Pin to favorites'} style={{background:'none',border:'none',cursor:'pointer',fontSize:'16px',padding:'0 4px',color: pinnedGames.includes(game.id) ? 'var(--gold)' : 'var(--text-muted)',opacity: pinnedGames.includes(game.id) ? 1 : 0.4}}>{pinnedGames.includes(game.id) ? '\u2605' : '\u2606'}</button>
-              <button className="game-refresh" onClick={(e) => { e.stopPropagation(); fetchGames(); }} disabled={loading} title="Refresh lines">&#8635;</button>
+              <button className="game-refresh" onClick={(e) => { e.stopPropagation(); fetchGames(true); }} disabled={loading} title="Refresh lines">&#8635;</button>
               <span>{game.time}</span>
               {game.gameStatus === 'in' && (
                 <span className="status-live" style={{display: 'flex', alignItems: 'center', marginLeft: '8px'}}>
@@ -1694,12 +2277,17 @@ function App() {
             <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
               {isSharp && <span className="sharp-play-badge">SHARP</span>}
               <div className="line-badges">
-                {game.spread !== null && <span className="line-badge spread">{game.spread > 0 ? '+' : ''}{game.spread}</span>}
+                {game.isMlPrimary && game.homeML != null ? (
+                  <span className="line-badge spread" title="Moneyline">ML {game.homeML > 0 ? '+' : ''}{game.homeML} / {game.awayML > 0 ? '+' : ''}{game.awayML}</span>
+                ) : (
+                  game.spread !== null && <span className="line-badge spread">{game.spread > 0 ? '+' : ''}{game.spread}</span>
+                )}
                 {game.total !== null && <span className="line-badge total">O/U {game.total}</span>}
               </div>
             </div>
           </div>
         </div>
+
 
         <div className="game-matchup">
           <div className="team-row">
@@ -1709,9 +2297,17 @@ function App() {
               {gd.rlmSide === 'away' && <span className="rlm-badge">RLM</span>}
               <span className="team-record">{game.awayRecord}</span>
             </span>
-            {(game.gameStatus === 'in' || game.gameStatus === 'post') && game.awayScore && (
-              <span className="live-score">{game.awayScore}</span>
-            )}
+            <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
+              {gd.lockedAwayBS != null && (
+                <span className={getScoreClass(gd.lockedAwayBS)} style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'13px', fontWeight:800, padding:'2px 6px', borderRadius:'4px', background:'rgba(255,255,255,0.06)', lineHeight:1}}>{gd.lockedAwayBS}</span>
+              )}
+              {gd.awayClosingLine != null && (
+                <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'11px', fontWeight:600, color:'var(--gold)', opacity:0.8}}>{gd.awayClosingLine > 0 ? '+' : ''}{gd.awayClosingLine}</span>
+              )}
+              {(game.gameStatus === 'in' || game.gameStatus === 'post') && game.awayScore && (
+                <span className="live-score">{game.awayScore}</span>
+              )}
+            </div>
           </div>
           <div className="at-symbol">AT</div>
           <div className="team-row">
@@ -1721,18 +2317,37 @@ function App() {
               {gd.rlmSide === 'home' && <span className="rlm-badge">RLM</span>}
               <span className="team-record">{game.homeRecord}</span>
             </span>
-            {(game.gameStatus === 'in' || game.gameStatus === 'post') && game.homeScore && (
-              <span className="live-score">{game.homeScore}</span>
-            )}
+            <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
+              {gd.lockedHomeBS != null && (
+                <span className={getScoreClass(gd.lockedHomeBS)} style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'13px', fontWeight:800, padding:'2px 6px', borderRadius:'4px', background:'rgba(255,255,255,0.06)', lineHeight:1}}>{gd.lockedHomeBS}</span>
+              )}
+              {gd.homeClosingLine != null && (
+                <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'11px', fontWeight:600, color:'var(--gold)', opacity:0.8}}>{gd.homeClosingLine > 0 ? '+' : ''}{gd.homeClosingLine}</span>
+              )}
+              {(game.gameStatus === 'in' || game.gameStatus === 'post') && game.homeScore && (
+                <span className="live-score">{game.homeScore}</span>
+              )}
+            </div>
           </div>
         </div>
+
 
         <div className={`card-expandable-section ${!isExpanded ? 'collapsed' : ''}`}>
         {gd.lineHistory && gd.lineHistory.length >= 1 && (
           <div className="inputs-section" style={{borderBottom: '1px solid var(--border)'}}>
-            <div className="inputs-label" style={{color:'var(--gold)'}}>Line History ({game.homeName})</div>
+            <div className="inputs-label" style={{color:'var(--gold)'}}>{gd.isMlPrimary ? 'Win Prob History' : 'Line History'} ({game.homeName})</div>
             <div style={{display: 'flex', justifyContent: 'center', padding: '4px 0'}}>
-              {renderSparkline(gd.lineHistory)}
+              {gd.isMlPrimary
+                ? <SparklineChart lineHistory={gd.lineHistory} openLine={gd.openHomeProb} color="#ff9f0a" dataKey="homeProb" />
+                : renderSparkline(gd.lineHistory, gd.homeOpenLine)}
+            </div>
+          </div>
+        )}
+        {gd.lineHistory && gd.lineHistory.length >= 1 && gd.lineHistory.some(e => e.total != null) && (
+          <div className="inputs-section" style={{borderBottom: '1px solid var(--border)'}}>
+            <div className="inputs-label" style={{color:'var(--accent)'}}>Total History (O/U)</div>
+            <div style={{display: 'flex', justifyContent: 'center', padding: '4px 0'}}>
+              {renderTotalSparkline(gd.lineHistory, gd.openTotal)}
             </div>
           </div>
         )}
@@ -1758,6 +2373,7 @@ function App() {
           </div>
         </div>
 
+
         <div className="inputs-section">
           <div className="inputs-label" style={{color:'var(--accent)'}}>Total Splits (Over)</div>
           <div className="inputs-grid three">
@@ -1779,6 +2395,7 @@ function App() {
             </div>
           </div>
         </div>
+
 
         <div className="inputs-section" style={{borderTop:'1px solid var(--border)'}}>
           <div className="inputs-label" style={{color:'var(--gold)'}}>Spread Lines (Best Line Per Team)</div>
@@ -1844,6 +2461,7 @@ function App() {
           </div>
         </div>
 
+
         {(openBestHome || openBestAway || bestHome || bestAway) && (
           <div className="best-line-section">
             <div className="inputs-label" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -1899,6 +2517,26 @@ function App() {
           </div>
         )}
 
+
+        {polyData[game.id] && (
+          <div className="poly-section">
+            <div className="poly-header">
+              <span className="poly-label">Polymarket Implied Probability</span>
+            </div>
+            <div className="poly-teams">
+              <div className="poly-team">
+                <span className="poly-team-name">{polyData[game.id].homeName}</span>
+                <span className="poly-team-pct" style={{color: '#8b5cf6'}}>{polyData[game.id].homePrice}%</span>
+              </div>
+              <div className="poly-team">
+                <span className="poly-team-pct" style={{color: '#8b5cf6'}}>{polyData[game.id].awayPrice}%</span>
+                <span className="poly-team-name">{polyData[game.id].awayName}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+
         {(all.home || all.away) && (
           <div className="bs-section">
             <div className="bs-section-label">Spread BetScore</div>
@@ -1908,6 +2546,7 @@ function App() {
             </div>
           </div>
         )}
+
 
         {(all.over || all.under) && (
           <div className="bs-section" style={{borderTopColor:'var(--accent)'}}>
@@ -1919,6 +2558,7 @@ function App() {
           </div>
         )}
 
+
         <div className="inputs-section" style={{borderTop:'1px solid var(--border)'}}>
           <div className="inputs-label" style={{color:'var(--text-dim)'}}>Game Notes</div>
           <textarea className="game-note-input" placeholder="Add note..."
@@ -1928,6 +2568,7 @@ function App() {
       </div>
     );
   };
+
 
   return (
     <div>
@@ -1941,7 +2582,30 @@ function App() {
         <div className="sub">Sharp Money Tracker</div>
       </div>
 
+
       {!storageWorks && <div className="warning-bar">Data won't persist on file://. Keep this tab open.</div>}
+
+
+      <div style={{padding: '8px 12px', display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center'}}>
+        {Object.entries(SPORT_CONFIG).map(([key, cfg]) => (
+          <button key={key} onClick={() => {
+            if (key === sport) return;
+            // Save current sport data, then switch
+            setSport(key);
+            // Load the new sport's cached data from localStorage
+            setGames(load('games-' + key, []));
+            setGameData(load('gameData-' + key, {}));
+            setBets(load('bets-' + key, {}));
+            setHistory(load('history-' + key, []));
+            setPinnedGames(load('pinned-' + key, []));
+            setSharpRecords(load('sharpRecords-' + key, { wins: 0, losses: 0, pushes: 0, clvBeats: 0, clvMisses: 0, history: [] }));
+            lastFetchTimestampRef.current = 0;
+            setLastFetchTimestamp(0); // Reset cooldown for new sport
+          }} style={{padding: '6px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 600, border: '1px solid ' + (sport === key ? 'var(--gold)' : 'var(--border)'), background: sport === key ? 'var(--gold)' : 'transparent', color: sport === key ? '#000' : 'var(--text-dim)', cursor: 'pointer', transition: 'all 0.2s'}}>
+            {cfg.name}
+          </button>
+        ))}
+      </div>
 
       <div className="status-bar">
         <span className="pill"><span className="dot" style={{background: games.length > 0 ? 'var(--green)' : 'var(--red)'}}></span>{games.length} games</span>
@@ -1950,6 +2614,7 @@ function App() {
         <span className="pill"><span className="dot" style={{background: !splitsStatus || splitsStatus.includes('error') || splitsStatus.includes('no ') ? 'var(--red)' : splitsStatus.includes('load') || splitsStatus.includes('try') ? 'var(--yellow)' : 'var(--green)'}}></span>Splits: {splitsStatus || 'idle'}</span>
         <span className="pill"><span className="dot" style={{background: !polyStatus || polyStatus.includes('error') || polyStatus.includes('0 ') ? 'var(--red)' : polyStatus.includes('load') ? 'var(--yellow)' : '#8b5cf6'}}></span>Poly: {polyStatus || 'waiting'}</span>
       </div>
+
 
       <button className="settings-toggle" onClick={() => setSettingsOpen(!settingsOpen)}>
         {settingsOpen ? '- Hide Settings' : '+ API Key & Settings'}
@@ -1963,11 +2628,66 @@ function App() {
           <span style={{fontSize: '12px', textTransform: 'capitalize'}}>🔔 Sharp Play Notifications</span>
         </label>
         <div style={{marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)'}}>⏰ Auto-refreshes daily at 5 AM ET for fresh lines</div>
+        <div style={{marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '12px'}}>
+          <label style={{fontSize: '11px', color: 'var(--text-dim)', display: 'block', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px'}}>Backup & Restore</label>
+          <button onClick={() => {
+            const backup = {
+              _version: 2,
+              sport: sport,
+              games: games,
+              gameData: gameData,
+              sharpRecords: sharpRecords,
+              history: history,
+              bets: bets,
+              pinnedGames: pinnedGames,
+              apiKey: apiKey
+            };
+            const json = JSON.stringify(backup, null, 2);
+            const blob = new Blob([json], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'betscore-backup-' + new Date().toISOString().split('T')[0] + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }} style={{display: 'block', width: '100%', padding: '10px 12px', marginBottom: '8px', background: 'linear-gradient(135deg, #5ac8fa 0%, #3a9fd8 100%)', color: '#000', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s'}}>
+            Download Backup
+          </button>
+          <input ref={ref => { window.restoreFileInput = ref; }} type="file" accept=".json" onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              try {
+                const backup = JSON.parse(evt.target.result);
+                if (backup.sport) setSport(backup.sport);
+                if (backup.games) setGames(backup.games);
+                setGameData(backup.gameData || {});
+                setSharpRecords(backup.sharpRecords || { wins: 0, losses: 0, pushes: 0, clvBeats: 0, clvMisses: 0, history: [] });
+                setHistory(backup.history || []);
+                setBets(backup.bets || {});
+                setPinnedGames(backup.pinnedGames || []);
+                if (backup.apiKey) setApiKey(backup.apiKey);
+                alert('Backup restored! Sport: ' + (backup.sport ? SPORT_CONFIG[backup.sport]?.name || backup.sport : 'default'));
+              } catch(err) {
+                alert('Error restoring backup: ' + err.message);
+              }
+            };
+            reader.readAsText(file);
+          }} style={{display: 'none'}} />
+          <button onClick={() => { window.restoreFileInput?.click(); }} style={{display: 'block', width: '100%', padding: '10px 12px', background: 'var(--card-alt)', color: 'var(--text-dim)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s'}}>
+            Restore Backup
+          </button>
+        </div>
       </div>
 
-      <button className={'fetch-btn ' + (!loading && games.length > 0 ? 'success' : '')} onClick={() => { if ('Notification' in window && notificationsEnabled && Notification.permission === 'default') { Notification.requestPermission(); } fetchGames(); }} disabled={loading}>
+
+      <button className={'fetch-btn ' + (!loading && games.length > 0 ? 'success' : '')} onClick={() => { if ('Notification' in window && notificationsEnabled && Notification.permission === 'default') { Notification.requestPermission(); } fetchGames(true); }} disabled={loading}>
         {loading ? <><span className="spinner"></span> Fetching...</> : games.length > 0 ? 'Refresh Games & Lines' : "Fetch Today's Games"}
       </button>
+
 
       {games.length > 0 && (
         <button className="export-btn" onClick={exportToExcel}>
@@ -1977,6 +2697,7 @@ function App() {
           Export to Excel
         </button>
       )}
+
 
       {games.length > 0 && (
         <div className="splits-panel">
@@ -1994,6 +2715,7 @@ function App() {
             </span>
           </div>
 
+
           {splitsOpen && (
             <div className="splits-body">
               <div className="splits-actions">
@@ -2004,6 +2726,7 @@ function App() {
                   {'\uD83D\uDDD1'} Clear All
                 </button>
               </div>
+
 
               {/* Source status */}
               {Object.keys(splitsSourceStatus).length > 0 && (
@@ -2023,6 +2746,7 @@ function App() {
                 </div>
               )}
 
+
               {/* Paste section */}
               <div style={{borderTop:'1px solid var(--border)',paddingTop:'10px',marginTop:'4px'}}>
                 <div style={{fontSize:'10px',fontWeight:800,textTransform:'uppercase',letterSpacing:'1px',color:'#f59e0b',marginBottom:'6px'}}>
@@ -2035,6 +2759,7 @@ function App() {
                 </button>
               </div>
 
+
               {/* Result message */}
               {splitsStatus && (
                 <div className={'splits-result ' + (
@@ -2045,6 +2770,7 @@ function App() {
                   {splitsStatus}
                 </div>
               )}
+
 
               {/* Debug log */}
               {splitsLog.length > 0 && (
@@ -2059,7 +2785,9 @@ function App() {
         </div>
       )}
 
+
       {status && <div className="status-text">{status}</div>}
+
 
       <div className="tabs">
         {['scores','all','history'].map(t => (
@@ -2068,6 +2796,7 @@ function App() {
           </button>
         ))}
       </div>
+
 
       {tab === 'scores' && (
         <div className="sort-bar">
@@ -2084,7 +2813,9 @@ function App() {
         </div>
       )}
 
+
       <div className="content">
+
 
       {tab === 'scores' && (
         <div className="games-list">
@@ -2118,6 +2849,13 @@ function App() {
                   <div className="lbl">Win Rate</div>
                 </div>
               </div>
+              <div className="dashboard-stat">
+                <div className="icon">📈</div>
+                <div className="content">
+                  <div className="val" style={{fontSize:'13px'}}>{sharpRecords.clvBeats + sharpRecords.clvMisses > 0 ? Math.round((sharpRecords.clvBeats / (sharpRecords.clvBeats + sharpRecords.clvMisses)) * 100) : 0}%</div>
+                  <div className="lbl">CLV Beat Rate</div>
+                </div>
+              </div>
             </div>
           )}
           <div className="section-header">
@@ -2139,17 +2877,18 @@ function App() {
                   <div className="section-header" style={{marginTop:'8px'}}>
                     <span className="section-title" style={{color:'var(--gold)'}}>{'\u2605'} Favorites ({pinnedSorted.length})</span>
                   </div>
-                  {pinnedSorted.map(game => renderGameCard(game))}
+                  {pinnedSorted.map(game => <ErrorBoundary key={game.id}>{renderGameCard(game)}</ErrorBoundary>)}
                   <div className="section-header" style={{marginTop:'16px',marginBottom:'4px'}}>
                     <span className="section-title">All Games</span>
                   </div>
                 </>
               )}
-              {unpinnedSorted.map(game => renderGameCard(game))}
+              {unpinnedSorted.map(game => <ErrorBoundary key={game.id}>{renderGameCard(game)}</ErrorBoundary>)}
             </>;
           })()}
         </div>
       )}
+
 
       {tab === 'all' && (
         <div className="games-list">
@@ -2189,6 +2928,7 @@ function App() {
         </div>
       )}
 
+
       {tab === 'history' && (
         <div className="games-list">
           <div className="section-header">
@@ -2226,7 +2966,9 @@ function App() {
         </div>
       )}
 
+
       </div>
+
 
       <div className="summary-bar">
         <div className="summary-stat"><div className="val c-green">{plays}</div><div className="lbl">Plays</div></div>
@@ -2243,7 +2985,9 @@ function App() {
   );
 }
 
+
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
 
 // ── PWA Support ──
 // Create and register manifest
@@ -2281,6 +3025,7 @@ manifestLink.rel = 'manifest';
 manifestLink.href = manifestUrl;
 document.head.appendChild(manifestLink);
 
+
 // Register service worker
 if ('serviceWorker' in navigator) {
   const swCode = `
@@ -2314,11 +3059,13 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register(swUrl).catch(() => {});
 }
 
+
 // Add iOS app icon meta tags
 const iosMeta = document.createElement('meta');
 iosMeta.name = 'apple-mobile-web-app-title';
 iosMeta.content = "BetScore";
 document.head.appendChild(iosMeta);
+
 
 const iosIcon = document.createElement('link');
 iosIcon.rel = 'apple-touch-icon';
