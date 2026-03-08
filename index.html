@@ -247,6 +247,8 @@ body {
 .card-expandable-section.collapsed { max-height: 0; opacity: 0; }
 .sharp-filter-btn { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; color: var(--text-dim); background: transparent; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
 .sharp-filter-btn.active { color: var(--gold); border-color: var(--gold); background: rgba(255,159,10,0.1); }
+.rlm-badge { display: inline-flex; align-items: center; gap: 4px; background: rgba(139,92,246,0.2); color: #a78bfa; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 800; letter-spacing: 0.5px; border: 1px solid rgba(139,92,246,0.3); margin-left: 4px; }
+.sparkline-container { width: 100%; height: 60px; padding: 8px 0; background: rgba(255,159,10,0.04); border-radius: var(--radius-sm); overflow: hidden; }
 .game-note-input { width: 100%; padding: 8px 10px; font-size: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; resize: vertical; min-height: 50px; }
 .game-note-input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 3px rgba(255,159,10,0.15); }
 .game-note-input::placeholder { color: var(--text-muted); }
@@ -324,6 +326,7 @@ function App() {
   const [sharpRecords, setSharpRecords] = useState(load('sharpRecords', { wins: 0, losses: 0, pushes: 0, history: [] }));
   const [expandedCards, setExpandedCards] = useState({});
   const [sharpOnlyFilter, setSharpOnlyFilter] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(load('notificationsEnabled', true));
   const addSplitsLog = (msg, type) => { setSplitsLog(prev => [...prev.slice(-30), { msg, type: type || 'info', t: Date.now() }]); };
 
   useEffect(() => { save('apiKey', apiKey); }, [apiKey]);
@@ -335,6 +338,7 @@ function App() {
   useEffect(() => { save('lastFetch', lastFetch); }, [lastFetch]);
   useEffect(() => { save('pinned', pinnedGames); }, [pinnedGames]);
   useEffect(() => { save('sharpRecords', sharpRecords); }, [sharpRecords]);
+  useEffect(() => { save('notificationsEnabled', notificationsEnabled); }, [notificationsEnabled]);
 
   const didAutoFetch = useRef(false);
   useEffect(() => { if (!didAutoFetch.current && games.length === 0) { didAutoFetch.current = true; setTimeout(() => fetchGames(), 500); } }, []);
@@ -903,6 +907,16 @@ function App() {
               if (Math.abs(finalT - finalM) > 60) conf = 'low';
               gd._splitsConfidence = conf;
               filled++;
+              // Calculate RLM: line moved toward team but public money is opposite
+              const homeLineMove = (parseFloat(gd.homeOpenLine) || 0) - (parseFloat(gd.homeCurrentLine) || 0);
+              const ticketsPct = parseFloat(finalT) || 0;
+              if (homeLineMove > 0 && ticketsPct > 50) {
+                gd.rlmSide = 'away';
+              } else if (homeLineMove < 0 && ticketsPct < 50) {
+                gd.rlmSide = 'home';
+              } else {
+                gd.rlmSide = null;
+              }
             }
           }
         }
@@ -1063,6 +1077,7 @@ function App() {
         const next = { ...prev };
         for (const g of matchedGames) {
           if (!next[g.id]) {
+            const histEntry = { time: Date.now(), homeSpread: g.spread, awaySpread: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null) };
             next[g.id] = {
               homeOpenLine: g.spread, homeCurrentLine: g.spread, _lastApiHome: g.spread,
               awayOpenLine: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null), awayCurrentLine: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null), _lastApiAway: g.awaySpread != null ? g.awaySpread : (g.spread != null ? -g.spread : null),
@@ -1071,6 +1086,7 @@ function App() {
               lockedHomeBS: null, lockedAwayBS: null, lockedOverBS: null, lockedUnderBS: null,
               openBooks: g.books || [],
               homeClosingLine: null, awayClosingLine: null, closingTotal: null, _closingLocked: false,
+              lineHistory: [histEntry], rlmSide: null, _notified: false, _graded: false,
             };
           } else {
             const gd = next[g.id];
@@ -1084,9 +1100,16 @@ function App() {
             if (gd.homeOpenLine == null && g.spread !== null) { gd.homeOpenLine = g.spread; gd.awayOpenLine = g.awaySpread != null ? g.awaySpread : -g.spread; }
             if (g.spread !== null) {
               // Always update current/live lines from API — use per-team best spreads
+              const prevHome = gd.homeCurrentLine;
+              const prevAway = gd.awayCurrentLine;
               gd.homeCurrentLine = g.spread;
               gd.awayCurrentLine = g.awaySpread != null ? g.awaySpread : -g.spread;
               gd._lastApiHome = g.spread; gd._lastApiAway = g.awaySpread != null ? g.awaySpread : -g.spread;
+              // Track line history
+              if (!gd.lineHistory) gd.lineHistory = [];
+              if (prevHome !== g.spread || prevAway !== (g.awaySpread != null ? g.awaySpread : -g.spread)) {
+                gd.lineHistory.push({ time: Date.now(), homeSpread: g.spread, awaySpread: g.awaySpread != null ? g.awaySpread : -g.spread });
+              }
             }
             if ((gd.openTotal == null) && g.total !== null) gd.openTotal = g.total;
             if (g.total !== null) gd.currentTotal = g.total;
@@ -1095,6 +1118,10 @@ function App() {
             if (gd.totalMoney === undefined) gd.totalMoney = '';
             if (gd.lockedHomeBS === undefined) gd.lockedHomeBS = null;
             if (!gd.openBooks || gd.openBooks.length === 0) gd.openBooks = g.books || [];
+            if (!gd.lineHistory) gd.lineHistory = [];
+            if (gd.rlmSide === undefined) gd.rlmSide = null;
+            if (gd._notified === undefined) gd._notified = false;
+            if (gd._graded === undefined) gd._graded = false;
             // Lock closing line AND BetScore when game starts (status changes to 'in' or 'post')
             if ((g.gameStatus === 'in' || g.gameStatus === 'post') && !gd._closingLocked) {
               gd.homeClosingLine = gd._lastApiHome;
@@ -1174,9 +1201,69 @@ function App() {
       }).catch(e => { console.log('[Poly] Catch:', e); setPolyStatus('error'); });
 
       setLastFetch(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+
+      // Auto-grade final games and fire notifications for sharp plays
+      setGameData(prev => {
+        const next = { ...prev };
+        let gradesUpdated = false;
+        for (const g of matchedGames) {
+          const gd = next[g.id];
+          if (!gd) continue;
+
+          // Check for 3-check sharp plays and fire notification (first time only)
+          if (!gd._notified && (g.gameStatus === 'pre' || g.gameStatus === 'in')) {
+            const all = calcAll(gd);
+            const homeChecks = getChecks(all.home, gd.money);
+            const awayMoney = gd.money !== '' ? String(100-(parseFloat(gd.money)||0)) : '';
+            const awayChecks = getChecks(all.away, awayMoney);
+            const isSharp = (homeChecks.filter(Boolean).length === 3) || (awayChecks.filter(Boolean).length === 3);
+            if (isSharp && notificationsEnabled) {
+              const sharpSide = homeChecks.filter(Boolean).length === 3 ? g.homeName : g.awayName;
+              const bs = homeChecks.filter(Boolean).length === 3 ? all.home : all.away;
+              const msg = 'SHARP PLAY: ' + g.awayName + ' @ ' + g.homeName + ' - ' + sharpSide + ' ' + (bs?.score || 0);
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(msg, { icon: '🔥', tag: 'sharp-' + g.id });
+              }
+              gd._notified = true;
+            }
+          }
+
+          // Auto-grade when game goes final
+          if (!gd._graded && g.gameStatus === 'post' && g.homeScore && g.awayScore && gd._closingLocked) {
+            const all = calcAll(gd);
+            const homeChecks = getChecks(all.home, gd.money);
+            const awayMoney = gd.money !== '' ? String(100-(parseFloat(gd.money)||0)) : '';
+            const awayChecks = getChecks(all.away, awayMoney);
+            const hasSharp = (homeChecks.filter(Boolean).length === 3) || (awayChecks.filter(Boolean).length === 3);
+            if (hasSharp) {
+              const isHomeSharp = homeChecks.filter(Boolean).length === 3;
+              const sharpScore = isHomeSharp ? all.home.score : all.away.score;
+              const homeScore = parseInt(g.homeScore) || 0;
+              const awayScore = parseInt(g.awayScore) || 0;
+              const margin = homeScore - awayScore;
+              const closingSpread = isHomeSharp ? parseFloat(gd.homeClosingLine) : parseFloat(gd.awayClosingLine);
+              const covered = isHomeSharp ? (margin > -closingSpread) : (margin < -closingSpread);
+              const push = Math.abs(margin + closingSpread) < 0.01;
+              if (!push) {
+                setSharpRecords(prev => ({
+                  wins: prev.wins + (covered ? 1 : 0),
+                  losses: prev.losses + (!covered ? 1 : 0),
+                  pushes: prev.pushes,
+                  history: [...prev.history, { gameId: g.id, date: new Date().toISOString(), result: covered ? 'W' : 'L', score: sharpScore }]
+                }));
+              } else {
+                setSharpRecords(prev => ({...prev, pushes: prev.pushes + 1, history: [...prev.history, { gameId: g.id, date: new Date().toISOString(), result: 'P', score: sharpScore }]}));
+              }
+              gd._graded = true;
+              gradesUpdated = true;
+            }
+          }
+        }
+        return gradesUpdated ? next : prev;
+      });
     } catch(e) { setStatus('Error: ' + (e.message || 'unknown')); }
     setLoading(false);
-  }, [apiKey]);
+  }, [apiKey, notificationsEnabled]);
 
   // ── BetScore calc for one side (takes pre-computed lineMove) ──
   const calcSide = (tickets, money, lineMove) => {
@@ -1441,6 +1528,42 @@ function App() {
     return 'score-neg80plus';
   };
 
+  // ── Render helper: Line History Sparkline ──
+  const renderSparkline = (lineHistory) => {
+    if (!lineHistory || lineHistory.length < 2) return null;
+    const width = 200, height = 60, padding = 8;
+    const inner = { x: padding, y: padding, w: width - padding * 2, h: height - padding * 2 };
+    const spreads = lineHistory.map(e => e.homeSpread);
+    const min = Math.min(...spreads);
+    const max = Math.max(...spreads);
+    const range = max - min || 1;
+    const points = lineHistory.map((e, i) => {
+      const x = inner.x + (i / (lineHistory.length - 1)) * inner.w;
+      const y = inner.y + inner.h - ((e.homeSpread - min) / range) * inner.h;
+      return [x, y];
+    });
+    const pathStr = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    const firstVal = spreads[0], lastVal = spreads[spreads.length - 1];
+    const goldColor = '#ff9f0a';
+    const textMutedColor = '#a0a0a5';
+    const gradId = 'sparkGrad_' + Math.random().toString(36).substr(2, 9);
+    return (
+      <svg width={width} height={height} style={{backgroundColor: 'rgba(255,159,10,0.04)', borderRadius: '8px', overflow: 'visible'}}>
+        <defs>
+          <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="rgba(255,159,10,0.3)" />
+            <stop offset="100%" stopColor="rgba(255,159,10,0.05)" />
+          </linearGradient>
+        </defs>
+        <path d={pathStr} stroke={goldColor} strokeWidth="2" fill="none" />
+        <path d={pathStr + 'L' + (inner.x + inner.w - 1) + ',' + (inner.y + inner.h) + 'L' + inner.x + ',' + (inner.y + inner.h) + 'Z'} fill={'url(#' + gradId + ')'} />
+        <line x1={inner.x} y1={inner.y + inner.h / 2} x2={inner.x + inner.w} y2={inner.y + inner.h / 2} stroke="rgba(255,159,10,0.15)" strokeWidth="1" strokeDasharray="2,2" />
+        <text x={inner.x + 4} y={inner.y + 12} fontSize="10" fill={textMutedColor} fontFamily="monospace">{firstVal > 0 ? '+' : ''}{firstVal}</text>
+        <text x={inner.x + inner.w - 24} y={inner.y + 12} fontSize="10" fill={textMutedColor} fontFamily="monospace" textAnchor="end">{lastVal > 0 ? '+' : ''}{lastVal}</text>
+      </svg>
+    );
+  };
+
   // ── Render helper: BetScore card ──
   const BsCard = ({ label, labelColor, bs, locked, checks }) => {
     if (!bs) return (
@@ -1534,6 +1657,7 @@ function App() {
             <span className="team-name">
               {game.awayRank && <span className="team-rank">#{game.awayRank}</span>}
               {game.awayName}
+              {gd.rlmSide === 'away' && <span className="rlm-badge">RLM</span>}
               <span className="team-record">{game.awayRecord}</span>
             </span>
             {(game.gameStatus === 'in' || game.gameStatus === 'post') && game.awayScore && (
@@ -1545,6 +1669,7 @@ function App() {
             <span className="team-name">
               {game.homeRank && <span className="team-rank">#{game.homeRank}</span>}
               {game.homeName}
+              {gd.rlmSide === 'home' && <span className="rlm-badge">RLM</span>}
               <span className="team-record">{game.homeRecord}</span>
             </span>
             {(game.gameStatus === 'in' || game.gameStatus === 'post') && game.homeScore && (
@@ -1554,6 +1679,14 @@ function App() {
         </div>
 
         <div className={`card-expandable-section ${!isExpanded ? 'collapsed' : ''}`}>
+        {gd.lineHistory && gd.lineHistory.length > 1 && (
+          <div className="inputs-section" style={{borderBottom: '1px solid var(--border)'}}>
+            <div className="inputs-label" style={{color:'var(--gold)'}}>Line History ({game.homeName})</div>
+            <div style={{display: 'flex', justifyContent: 'center', padding: '4px 0'}}>
+              {renderSparkline(gd.lineHistory)}
+            </div>
+          </div>
+        )}
         <div className="inputs-section">
           <div className="inputs-label" style={{color:'var(--gold)'}}>Spread Splits ({game.homeName}){gd._splitsSource && <span className="splits-auto-badge" style={{background: gd._splitsConfidence === 'high' ? 'var(--green)' : gd._splitsConfidence === 'medium' ? 'var(--yellow)' : gd._splitsConfidence === 'low' ? '#ff9f0a' : 'var(--text-muted)', color: gd._splitsConfidence === 'high' ? 'white' : gd._splitsConfidence === 'medium' ? '#000' : gd._splitsConfidence === 'low' ? 'white' : 'inherit'}}>{gd._splitsConfidence === 'high' ? 'AUTO' : gd._splitsConfidence === 'medium' ? 'AUTO?' : gd._splitsConfidence === 'low' ? 'AUTO??' : 'AUTO'}</span>}</div>
           <div className="inputs-grid three">
@@ -1776,9 +1909,13 @@ function App() {
         <label>Odds API Key</label>
         <input type="text" value={apiKey} onChange={e => setApiKey(e.target.value.trim())} placeholder="Paste key here" />
         <div className="hint">Free at the-odds-api.com - 500 calls/month</div>
+        <label style={{marginTop: '12px', display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: 600}}>
+          <input type="checkbox" checked={notificationsEnabled} onChange={e => setNotificationsEnabled(e.target.checked)} style={{marginRight: '8px', cursor: 'pointer', width: 'auto'}} />
+          <span style={{fontSize: '12px', textTransform: 'capitalize'}}>🔔 Sharp Play Notifications</span>
+        </label>
       </div>
 
-      <button className={'fetch-btn ' + (!loading && games.length > 0 ? 'success' : '')} onClick={fetchGames} disabled={loading}>
+      <button className={'fetch-btn ' + (!loading && games.length > 0 ? 'success' : '')} onClick={() => { if ('Notification' in window && notificationsEnabled && Notification.permission === 'default') { Notification.requestPermission(); } fetchGames(); }} disabled={loading}>
         {loading ? <><span className="spinner"></span> Fetching...</> : games.length > 0 ? 'Refresh Games & Lines' : "Fetch Today's Games"}
       </button>
 
