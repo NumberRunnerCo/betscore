@@ -459,9 +459,19 @@ function App() {
         lastAutoDay.current = etDate;
         save('lastAutoDay', etDate);
         console.log('[AutoRefresh] 5 AM ET new day — clearing old data & fetching fresh games');
+        // Prune lineHistory before clearing (keep last 50 entries per game for historical reference)
+        setGameData(prev => {
+          const pruned = {};
+          for (const [id, gd] of Object.entries(prev)) {
+            if (gd.lineHistory && gd.lineHistory.length > 50) {
+              pruned[id] = { ...gd, lineHistory: gd.lineHistory.slice(-50) };
+            }
+          }
+          return Object.keys(pruned).length > 0 ? { ...prev, ...pruned } : prev;
+        });
         // Clear old game data for fresh slate
         setGameData({});
-        save('gameData', {});
+        save('gameData-' + sport, {});
         fetchGames();
       }
     };
@@ -1093,16 +1103,16 @@ function App() {
           // Don't update splits for locked (live/final) games — BetScore should be frozen
           if (gd._closingLocked) continue;
           if (overwrite || gd.tickets === '' || gd.tickets == null) {
-            var finalT = splits.side === 'home' ? parseInt(splits.tickets) : 100 - parseInt(splits.tickets);
-            var finalM = splits.side === 'home' ? parseInt(splits.money) : 100 - parseInt(splits.money);
-            var isBad = isNaN(finalT) || isNaN(finalM) || (finalT < 10 && finalM < 10) || finalT < 5 || finalM < 5 || (finalT > 95 && finalM > 95);
+            const finalT = splits.side === 'home' ? parseInt(splits.tickets) : 100 - parseInt(splits.tickets);
+            const finalM = splits.side === 'home' ? parseInt(splits.money) : 100 - parseInt(splits.money);
+            const isBad = isNaN(finalT) || isNaN(finalM) || (finalT < 10 && finalM < 10) || finalT < 5 || finalM < 5 || (finalT > 95 && finalM > 95);
             if (isBad) {
               console.log('[Splits] BLOCKED: game ' + gameId + ' T=' + finalT + ' M=' + finalM);
             } else {
               gd.tickets = String(finalT);
               gd.money = String(finalM);
               gd._splitsSource = splits.source || 'auto';
-              var conf = splits.confidence || 'unknown';
+              let conf = splits.confidence || 'unknown';
               if (finalT < 15 || finalT > 85 || finalM < 15 || finalM > 85) conf = 'medium';
               if (Math.abs(finalT - finalM) > 60) conf = 'low';
               gd._splitsConfidence = conf;
@@ -1203,10 +1213,10 @@ function App() {
       const events = data.events || [];
 
 
-      const gamesList = events.map(ev => {
+      const gamesList = events.filter(ev => ev.competitions && ev.competitions.length > 0 && ev.competitions[0].competitors && ev.competitions[0].competitors.length >= 2).map(ev => {
         const comp = ev.competitions[0];
-        const home = comp.competitors.find(c => c.homeAway === 'home');
-        const away = comp.competitors.find(c => c.homeAway === 'away');
+        const home = comp.competitors.find(c => c.homeAway === 'home') || comp.competitors[0];
+        const away = comp.competitors.find(c => c.homeAway === 'away') || comp.competitors[1];
         const gt = new Date(ev.date);
         const timeStr = gt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         return {
@@ -1280,7 +1290,9 @@ function App() {
           setLastFetchTimestamp(lastFetchTimestampRef.current);
 
 
-          if (Array.isArray(oddsData)) {
+          if (oddsData && oddsData.message) {
+            setStatus(gamesList.length + ' games. API: ' + oddsData.message);
+          } else if (Array.isArray(oddsData)) {
             for (const g of oddsData) {
               const books = [];
               const homeSpreads = [];
@@ -1328,10 +1340,9 @@ function App() {
                 homeML: bestHomeML, awayML: bestAwayML, homeProb, awayProb,
                 mlPrimary: cfg.mlPrimary,
               };
+              if (cfg.mlPrimary) console.log('[Odds] ' + g.home_team + ' ML: ' + bestHomeML + '/' + bestAwayML + ' | Spread: ' + bestHomeSpread + ' | Prob: ' + (homeProb ? Math.round(homeProb*100)+'%' : 'null'));
             }
             setStatus(gamesList.length + ' games, ' + Object.keys(oddsMap).length + ' with lines');
-          } else if (oddsData && oddsData.message) {
-            setStatus(gamesList.length + ' games. API: ' + oddsData.message);
           }
         } catch(e) { setStatus(gamesList.length + ' games. Odds error: ' + (e.message || 'check key')); }
       } else {
@@ -1413,6 +1424,7 @@ function App() {
               // Always push if empty, or if line changed, or if >60s since last entry (periodic snapshot)
               if (!lastHist || lastHist.homeSpread !== newHomeSpread || lastHist.awaySpread !== newAwaySpread || (Date.now() - lastHist.time > 60000)) {
                 gd.lineHistory.push({ time: Date.now(), homeSpread: newHomeSpread, awaySpread: newAwaySpread, total: g.total, homeProb: g.homeProb || null, awayProb: g.awayProb || null });
+                if (gd.lineHistory.length > 200) gd.lineHistory = gd.lineHistory.slice(-200);
               }
             }
             if ((gd.openTotal == null) && g.total !== null) gd.openTotal = g.total;
@@ -1438,6 +1450,7 @@ function App() {
                 const lastHist = gd.lineHistory.length > 0 ? gd.lineHistory[gd.lineHistory.length - 1] : null;
                 if (!lastHist || lastHist.homeProb !== g.homeProb || (Date.now() - lastHist.time > 60000)) {
                   gd.lineHistory.push({ time: Date.now(), homeSpread: null, awaySpread: null, total: g.total, homeProb: g.homeProb, awayProb: g.awayProb });
+                  if (gd.lineHistory.length > 200) gd.lineHistory = gd.lineHistory.slice(-200);
                 }
               }
             }
@@ -1451,7 +1464,7 @@ function App() {
               gd.closingAwayProb = gd.awayProb;
               gd._closingLocked = true;
               // Re-lock BetScore using the closing line (overwrite any pre-game lock)
-              var lockCalc = calcAll(gd);
+              const lockCalc = calcAll(gd);
               if (lockCalc.home) gd.lockedHomeBS = lockCalc.home.score;
               if (lockCalc.away) gd.lockedAwayBS = lockCalc.away.score;
               if (lockCalc.over) gd.lockedOverBS = lockCalc.over.score;
@@ -1610,10 +1623,10 @@ function App() {
                 const closingProb = isHomeSharp ? (gd.homeProb || gd.openHomeProb) : (gd.awayProb || gd.openAwayProb);
                 clvBeat = openProb != null && closingProb != null && closingProb > openProb;
               } else {
-                const closingSpread = isHomeSharp ? parseFloat(gd.homeClosingLine) : parseFloat(gd.awayClosingLine);
-                const openSpread = isHomeSharp ? parseFloat(gd.homeOpenLine) : parseFloat(gd.awayOpenLine);
-                covered = isHomeSharp ? (margin > -closingSpread) : (margin < -closingSpread);
-                push = Math.abs(margin + closingSpread) < 0.01;
+                const closingSpread = parseFloat(isHomeSharp ? gd.homeClosingLine : gd.awayClosingLine) || 0;
+                const openSpread = parseFloat(isHomeSharp ? gd.homeOpenLine : gd.awayOpenLine) || 0;
+                covered = isHomeSharp ? (margin > -closingSpread) : (-margin < closingSpread);
+                push = Math.abs(margin + (isHomeSharp ? closingSpread : -closingSpread)) < 0.01;
                 // CLV: did the closing line move TOWARD the sharp side vs the open?
                 clvBeat = openSpread != null && closingSpread != null && !isNaN(openSpread) && !isNaN(closingSpread) && (
                   (isHomeSharp && closingSpread < openSpread) ||
@@ -1655,9 +1668,10 @@ function App() {
     if (tickets === '' || money === '' || tickets == null || money == null) return null;
     const t = parseFloat(tickets) || 0;
     const m = parseFloat(money) || 0;
+    const lm = (lineMove != null && !isNaN(lineMove)) ? lineMove : 0;
     const diff = m - t;
-    const score = Math.round(diff + (lineMove * 10) + (100 - m));
-    return { score, lineMove, diff };
+    const score = Math.round(diff + (lm * 10) + (100 - m));
+    return { score, lineMove: lm, diff };
   };
 
 
@@ -1916,14 +1930,19 @@ function App() {
 
 
         if (sharpHome || sharpAway) {
-          const spread = parseFloat(gd.homeCurrentLine) || 0;
           const homeFinal = parseInt(game.homeScore) || 0;
           const awayFinal = parseInt(game.awayScore) || 0;
           const homeMargin = homeFinal - awayFinal;
 
-
-          if (sharpHome) didWin = homeMargin > spread;
-          else if (sharpAway) didWin = -homeMargin > spread;
+          if (gd.isMlPrimary) {
+            // ML sports: sharp side wins if their team won outright
+            if (sharpHome) didWin = homeMargin > 0;
+            else if (sharpAway) didWin = homeMargin < 0;
+          } else {
+            const spread = parseFloat(gd.homeCurrentLine) || 0;
+            if (sharpHome) didWin = homeMargin > -spread;
+            else if (sharpAway) didWin = -homeMargin > spread;
+          }
 
 
           setSharpRecords(prev => ({
@@ -1978,7 +1997,7 @@ function App() {
             <rect x="0" y="0" width={width} height={height} rx="8" fill="rgba(30,30,34,0.9)" />
             <line x1={padL} y1={height/2} x2={width - padR} y2={height/2} stroke="rgba(255,255,255,0.12)" strokeWidth="1" strokeDasharray="4,3" />
             <circle cx={(padL + width - padR) / 2} cy={height/2} r="4" fill={goldColor} />
-            <text x={(padL + width - padR) / 2} y={height/2 - 12} fontSize="11" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace" textAnchor="middle">{firstVal > 0 ? '+' : ''}{firstVal}</text>
+            <text x={(padL + width - padR) / 2} y={height/2 - 12} fontSize="11" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace" textAnchor="middle">{fmtVal(firstVal)}</text>
             <text x={(padL + width - padR) / 2} y={height - 4} fontSize="9" fill="rgba(160,160,165,0.4)" fontFamily="'Inter', sans-serif" textAnchor="middle">Refresh to build chart</text>
           </svg>
         </div>
@@ -2060,8 +2079,8 @@ function App() {
           <circle cx={points[points.length-1][0]} cy={points[points.length-1][1]} r="4" fill={endDotColor} stroke="rgba(0,0,0,0.5)" strokeWidth="1" />
           <circle cx={points[points.length-1][0]} cy={points[points.length-1][1]} r="7" fill="none" stroke={endDotColor} strokeWidth="1" opacity="0.4" />
           {yTicks.map((t, i) => <text key={'yt'+i} x={inner.x + inner.w + 6} y={t.y + 3.5} fontSize="8" fill="rgba(160,160,165,0.5)" fontFamily="'JetBrains Mono', monospace">{fmtVal(t.val)}</text>)}
-          <text x={inner.x + 2} y={points[0][1] - 8} fontSize="10" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace">{firstVal > 0 ? '+' : ''}{firstVal}</text>
-          <text x={points[points.length-1][0]} y={points[points.length-1][1] - 10} fontSize="10" fill={endDotColor} fontFamily="'JetBrains Mono', monospace" textAnchor="end" fontWeight="700">{lastVal > 0 ? '+' : ''}{lastVal}</text>
+          <text x={inner.x + 2} y={points[0][1] - 8} fontSize="10" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace">{fmtVal(firstVal)}</text>
+          <text x={points[points.length-1][0]} y={points[points.length-1][1] - 10} fontSize="10" fill={endDotColor} fontFamily="'JetBrains Mono', monospace" textAnchor="end" fontWeight="700">{fmtVal(lastVal)}</text>
           {hoverPoint && (
             <>
               <line x1={hoverPoint.x} y1={padT} x2={hoverPoint.x} y2={padT + inner.h} stroke={goldColor} strokeWidth="1.5" opacity="0.6" />
@@ -2087,115 +2106,7 @@ function App() {
     return <SparklineChart lineHistory={lineHistory} openLine={openTotal} color="#5ac8fa" dataKey="total" />;
   };
 
-  // ── OLD renderSparkline for reference (can be removed) ──
-  const renderSparklineOld = (lineHistory, openLine) => {
-    if (!lineHistory || lineHistory.length < 1) return null;
-    const width = 300, height = 80, padL = 8, padR = 40, padT = 10, padB = 14;
-    const inner = { x: padL, y: padT, w: width - padL - padR, h: height - padT - padB };
-    // Filter out bogus zero entries that appear before real data
-    const openVal = openLine != null ? parseFloat(openLine) : null;
-    const filtered = openVal != null ? lineHistory.filter(e => !(e.homeSpread === 0 && openVal !== 0)) : lineHistory;
-    const history = filtered.length > 0 ? filtered : lineHistory;
-    const spreads = history.map(e => e.homeSpread);
-    const goldColor = '#ff9f0a';
-    const lineColor = '#e8920a';
-    const textMutedColor = '#a0a0a5';
-    const uid = 'spark_' + Math.random().toString(36).substr(2, 9);
-    const firstVal = spreads[0], lastVal = spreads[spreads.length - 1];
-    // Single point — show a dot with the current value
-    if (lineHistory.length === 1) {
-      return (
-        <div style={{textAlign:'center', padding:'4px 0'}}>
-          <svg width={width} height={height} viewBox={'0 0 ' + width + ' ' + height} style={{borderRadius: '8px', overflow: 'visible'}}>
-            <rect x="0" y="0" width={width} height={height} rx="8" fill="rgba(30,30,34,0.9)" />
-            <line x1={padL} y1={height/2} x2={width - padR} y2={height/2} stroke="rgba(255,255,255,0.12)" strokeWidth="1" strokeDasharray="4,3" />
-            <circle cx={(padL + width - padR) / 2} cy={height/2} r="4" fill={goldColor} />
-            <text x={(padL + width - padR) / 2} y={height/2 - 12} fontSize="11" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace" textAnchor="middle">{firstVal > 0 ? '+' : ''}{firstVal}</text>
-            <text x={(padL + width - padR) / 2} y={height - 4} fontSize="9" fill="rgba(160,160,165,0.4)" fontFamily="'Inter', sans-serif" textAnchor="middle">Refresh to build chart</text>
-          </svg>
-        </div>
-      );
-    }
-    const rawMin = Math.min(...spreads);
-    const rawMax = Math.max(...spreads);
-    // Baseline at the opening line — dashed line reference
-    const baselineVal = openVal != null ? openVal : firstVal;
-    // Include the baseline (opening line) in the range so it always fits on screen
-    const min = Math.min(rawMin, baselineVal);
-    const max = Math.max(rawMax, baselineVal);
-    const range = max - min || 1;
-    const isFlat = rawMin === rawMax;
-    const baselineY = isFlat ? (inner.y + inner.h / 2) : (inner.y + inner.h - ((baselineVal - min) / range) * inner.h);
-    const points = history.map((e, i) => {
-      const x = inner.x + (i / (history.length - 1)) * inner.w;
-      const y = isFlat ? (inner.y + inner.h / 2) : (inner.y + inner.h - ((e.homeSpread - min) / range) * inner.h);
-      return [x, y];
-    });
-    const pathStr = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-    // Area fill from line down to baseline (not bottom edge)
-    const areaPath = pathStr + 'L' + points[points.length-1][0].toFixed(1) + ',' + baselineY.toFixed(1) + 'L' + inner.x + ',' + baselineY.toFixed(1) + 'Z';
-    // Y-axis tick values for right side labels
-    const yTicks = [];
-    if (!isFlat) {
-      const step = range / 3;
-      for (let i = 0; i <= 3; i++) {
-        const val = max - i * step;
-        const y = inner.y + (i / 3) * inner.h;
-        yTicks.push({ val, y });
-      }
-    }
-    // End dot color: green if moved up, red if down, gold if flat
-    const moved = lastVal - firstVal;
-    const endDotColor = moved > 0 ? '#34c759' : moved < 0 ? '#ff453a' : goldColor;
-    return (
-      <div style={{textAlign:'center', padding:'4px 0'}}>
-        <svg width={width} height={height} viewBox={'0 0 ' + width + ' ' + height} style={{borderRadius: '8px', overflow: 'visible'}}>
-          <defs>
-            <linearGradient id={uid + '_above'} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="rgba(255,159,10,0.45)" />
-              <stop offset="100%" stopColor="rgba(255,159,10,0.03)" />
-            </linearGradient>
-            <linearGradient id={uid + '_below'} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="rgba(255,159,10,0.03)" />
-              <stop offset="100%" stopColor="rgba(255,159,10,0.35)" />
-            </linearGradient>
-            <clipPath id={uid + '_clipAbove'}>
-              <rect x="0" y="0" width={width} height={baselineY.toFixed(1)} />
-            </clipPath>
-            <clipPath id={uid + '_clipBelow'}>
-              <rect x="0" y={baselineY.toFixed(1)} width={width} height={height - baselineY} />
-            </clipPath>
-          </defs>
-          {/* Dark background */}
-          <rect x="0" y="0" width={width} height={height} rx="8" fill="rgba(25,25,30,0.95)" />
-          {/* Subtle grid lines */}
-          {yTicks.map((t, i) => <line key={i} x1={inner.x} y1={t.y.toFixed(1)} x2={inner.x + inner.w} y2={t.y.toFixed(1)} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />)}
-          {/* Dashed baseline at opening value */}
-          <line x1={inner.x} y1={baselineY.toFixed(1)} x2={inner.x + inner.w} y2={baselineY.toFixed(1)} stroke="rgba(255,255,255,0.18)" strokeWidth="1" strokeDasharray="5,4" />
-          {/* Area fill — above baseline */}
-          {!isFlat && <path d={areaPath} fill={'url(#' + uid + '_above)'} clipPath={'url(#' + uid + '_clipAbove)'} />}
-          {/* Area fill — below baseline */}
-          {!isFlat && <path d={areaPath} fill={'url(#' + uid + '_below)'} clipPath={'url(#' + uid + '_clipBelow)'} />}
-          {/* Glow behind the line */}
-          <path d={pathStr} stroke="rgba(255,159,10,0.25)" strokeWidth="6" fill="none" strokeLinejoin="round" strokeLinecap="round" />
-          {/* Main line */}
-          <path d={pathStr} stroke={lineColor} strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round" />
-          {/* Start dot */}
-          <circle cx={points[0][0]} cy={points[0][1]} r="3" fill={goldColor} stroke="rgba(0,0,0,0.5)" strokeWidth="1" />
-          {/* End dot — green/red/gold by direction */}
-          <circle cx={points[points.length-1][0]} cy={points[points.length-1][1]} r="4" fill={endDotColor} stroke="rgba(0,0,0,0.5)" strokeWidth="1" />
-          <circle cx={points[points.length-1][0]} cy={points[points.length-1][1]} r="7" fill="none" stroke={endDotColor} strokeWidth="1" opacity="0.4" />
-          {/* Y-axis labels on the right */}
-          {yTicks.map((t, i) => <text key={'yt'+i} x={inner.x + inner.w + 6} y={t.y + 3.5} fontSize="8" fill="rgba(160,160,165,0.5)" fontFamily="'JetBrains Mono', monospace">{t.val > 0 ? '+' : ''}{t.val.toFixed(1)}</text>)}
-          {/* Start and end value labels */}
-          <text x={inner.x + 2} y={points[0][1] - 8} fontSize="10" fill={textMutedColor} fontFamily="'JetBrains Mono', monospace">{firstVal > 0 ? '+' : ''}{firstVal}</text>
-          <text x={points[points.length-1][0]} y={points[points.length-1][1] - 10} fontSize="10" fill={endDotColor} fontFamily="'JetBrains Mono', monospace" textAnchor="end" fontWeight="700">{lastVal > 0 ? '+' : ''}{lastVal}</text>
-          {/* Point count */}
-          <text x={(padL + width - padR) / 2} y={height - 2} fontSize="8" fill="rgba(160,160,165,0.3)" fontFamily="'Inter', sans-serif" textAnchor="middle">{history.length} pts</text>
-        </svg>
-      </div>
-    );
-  };
+  // renderSparklineOld removed — replaced by SparklineChart component
 
 
   // ── Render helper: BetScore card ──
@@ -2284,11 +2195,10 @@ function App() {
             <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
               {isSharp && <span className="sharp-play-badge">SHARP</span>}
               <div className="line-badges">
-                {game.isMlPrimary && game.homeML != null ? (
-                  <span className="line-badge spread" title="Moneyline">ML {game.homeML > 0 ? '+' : ''}{game.homeML} / {game.awayML > 0 ? '+' : ''}{game.awayML}</span>
-                ) : (
-                  game.spread !== null && <span className="line-badge spread">{game.spread > 0 ? '+' : ''}{game.spread}</span>
+                {game.isMlPrimary && game.homeML != null && (
+                  <span className="line-badge spread" title="Moneyline" style={{background:'rgba(139,92,246,0.25)', borderColor:'rgba(139,92,246,0.5)'}}>ML {game.homeML > 0 ? '+' : ''}{game.homeML} / {game.awayML > 0 ? '+' : ''}{game.awayML}</span>
                 )}
+                {game.spread !== null && <span className="line-badge spread">{game.spread > 0 ? '+' : ''}{game.spread}</span>}
                 {game.total !== null && <span className="line-badge total">O/U {game.total}</span>}
               </div>
             </div>
@@ -2597,7 +2507,13 @@ function App() {
         {Object.entries(SPORT_CONFIG).map(([key, cfg]) => (
           <button key={key} onClick={() => {
             if (key === sport) return;
-            // Save current sport data, then switch
+            // Save current sport data before switching
+            save('games-' + sport, games);
+            save('gameData-' + sport, gameData);
+            save('bets-' + sport, bets);
+            save('history-' + sport, history);
+            save('pinned-' + sport, pinnedGames);
+            save('sharpRecords-' + sport, sharpRecords);
             setSport(key);
             // Load the new sport's cached data from localStorage
             setGames(load('games-' + key, []));
