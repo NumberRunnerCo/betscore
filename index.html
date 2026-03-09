@@ -757,7 +757,7 @@ function App() {
     let confidence = 'high';
     let reason = 'ok';
     if (t < 15 || t > 85 || m < 15 || m > 85) { confidence = 'medium'; reason = 'edge values'; }
-    if (Math.abs(t - m) > 60) { confidence = 'low'; reason = 'extreme diff (' + Math.abs(t-m) + ')'; }
+    if (Math.abs(t - m) > 45) { confidence = 'low'; reason = 'extreme diff (' + Math.abs(t-m) + ') - likely wrong team'; }
     return { valid: true, confidence, reason };
   };
 
@@ -781,9 +781,14 @@ function App() {
       const words = n.split(/\s+/);
       if (words[0].length >= 4 && !gameLookup[words[0]]) gameLookup[words[0]] = { game, side };
       // Last word (if 4+ chars): "state" from "michigan state" — skip common words
-      const skip = new Set(['state','north','south','east','west','central','northern','southern','western','eastern']);
+      const skip = new Set(['state','north','south','east','west','central','northern','southern','western','eastern','college','university','tech','city']);
       const last = words[words.length - 1];
       if (last.length >= 4 && !skip.has(last) && !gameLookup[last]) gameLookup[last] = { game, side };
+      // When first word is 2-3 chars (like "St." or "UC"), concatenate with second word
+      if (words.length >= 2 && words[0].length <= 3) {
+        const combined = words[0].toLowerCase() + words[1].toLowerCase();
+        if (combined.length >= 4 && !gameLookup[combined]) gameLookup[combined] = { game, side };
+      }
       // Abbreviation variants
       const abbrevs = {
         'uconn':'connecticut','usc':'southern california','ucla':'ucla','smu':'smu',
@@ -842,6 +847,26 @@ function App() {
       for (const w of words) {
         if (w.length >= 4 && gameLookup[w]) return gameLookup[w];
       }
+
+      // Fuzzy matching: strip common mascot suffixes and try again
+      const mascots = ['bulldogs', 'wildcats', 'tigers', 'bears', 'eagles', 'hawks', 'falcons', 'lions', 'cougars', 'huskies', 'mustangs', 'longhorns', 'cowboys', 'hoosiers', 'gators', 'volunteers', 'aggies', 'tartans', 'mountaineers', 'jayhawks', 'sooners', 'crimson', 'crimson tide'];
+      for (const mascot of mascots) {
+        if (name.endsWith(mascot)) {
+          const stripped = name.replace(mascot, '').trim();
+          if (gameLookup[stripped]) return gameLookup[stripped];
+          // Try words from stripped name
+          const strippedWords = stripped.split(/\s+/);
+          for (const w of strippedWords) {
+            if (w.length >= 4 && gameLookup[w]) return gameLookup[w];
+          }
+        }
+      }
+
+      // Try matching just the first word if it's 5+ characters
+      if (words.length > 0 && words[0].length >= 5 && gameLookup[words[0]]) {
+        return gameLookup[words[0]];
+      }
+
       return null;
     };
 
@@ -855,12 +880,19 @@ function App() {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       // Extract percentage-like numbers (skip spreads/decimals like -3.5)
+      // Improved: skip numbers after #, preceded by +/-, and outside 10-95 range
       const allNums = [];
       const numRegex = /(?:^|[^.\d-])(\d{1,3})(%|\s|$|\t|\|)/g;
       let nm;
       while ((nm = numRegex.exec(line)) !== null) {
+        const fullMatch = nm[0];
         const n = parseInt(nm[1]);
-        if (n >= 1 && n <= 100) allNums.push({ val: n, idx: nm.index + (nm[0].length - nm[1].length - nm[2].length) });
+        // Skip ranking numbers (preceded by #)
+        if (fullMatch.includes('#')) continue;
+        // Skip spread/odds (preceded by +/-)
+        if (fullMatch.match(/[+-]\d/)) continue;
+        // Only accept numbers between 10 and 95 for splits data
+        if (n >= 10 && n <= 95) allNums.push({ val: n, idx: nm.index + (nm[0].length - nm[1].length - nm[2].length) });
       }
       if (allNums.length < 2) continue;
 
@@ -873,9 +905,36 @@ function App() {
 
       const match = findTeam(teamPart);
       if (match && !foundForGame.has(match.game.id)) {
-        const tickets = allNums[0].val;
-        const money = allNums.length >= 2 ? allNums[1].val : null;
+        let tickets = allNums[0].val;
+        let money = allNums.length >= 2 ? allNums[1].val : null;
         if (money !== null) {
+          // If more than 2 numbers found, try to identify which are tickets/money by looking for labels
+          if (allNums.length > 2) {
+            const lineBelow = i + 1 < lines.length ? lines[i + 1].toLowerCase() : '';
+            const lineCombined = (line + ' ' + lineBelow).toLowerCase();
+            const hasTicketLabel = /tix|ticket|bet(?!\s+score)/.test(lineCombined);
+            const hasMoneyLabel = /money|handle|\$|wager/.test(lineCombined);
+            // If we have labels, use first two labeled numbers; otherwise use first two
+            if (hasTicketLabel || hasMoneyLabel) {
+              // Keep first two numbers if labels present
+              tickets = allNums[0].val;
+              money = allNums[1].val;
+            }
+          }
+
+          // Check if numbers look swapped (first much lower than second AND diff > 40)
+          if (Math.abs(tickets - money) > 40 && tickets < money - 30) {
+            // Try swapping and validate
+            const swapped = validateSplits(money, tickets);
+            const original = validateSplits(tickets, money);
+            if (swapped.valid && (!original.valid || swapped.confidence === 'high')) {
+              const temp = tickets;
+              tickets = money;
+              money = temp;
+              log('Swapped likely wrong team numbers for "' + teamPart + '": now T:' + tickets + ' M:' + money);
+            }
+          }
+
           const v = validateSplits(tickets, money);
           if (v.valid) {
             results[match.game.id] = { tickets, money, side: match.side, source: 'parsed', confidence: v.confidence };
@@ -1153,28 +1212,51 @@ function App() {
         // Single source - use as is with high confidence
         allResults[gameId] = { ...sources_array[0], confidence: 'high', _sourceCount: 1 };
       } else {
-        // Multiple sources - average them
-        let sumTickets = 0, sumMoney = 0, count = 0;
-        for (const src of sources_array) {
+        // Multiple sources - detect and exclude outliers before averaging
+        let validSources = [...sources_array];
+
+        // Calculate initial average to detect outliers
+        let sumTickets = 0, sumMoney = 0;
+        for (const src of validSources) {
           sumTickets += parseInt(src.tickets) || 0;
           sumMoney += parseInt(src.money) || 0;
-          count++;
         }
-        const avgTickets = Math.round(sumTickets / count);
-        const avgMoney = Math.round(sumMoney / count);
-        // Determine confidence based on agreement
-        const ticketsVariance = Math.max(...sources_array.map(s => Math.abs(parseInt(s.tickets) - avgTickets)));
-        const moneyVariance = Math.max(...sources_array.map(s => Math.abs(parseInt(s.money) - avgMoney)));
+        let avgTickets = Math.round(sumTickets / validSources.length);
+        let avgMoney = Math.round(sumMoney / validSources.length);
+
+        // Exclude sources that disagree by more than 20 percentage points on tickets
+        const outliers = validSources.filter(src => Math.abs(parseInt(src.tickets) - avgTickets) > 20);
+        if (outliers.length > 0 && outliers.length < validSources.length) {
+          for (const outlier of outliers) {
+            slog('Game ' + gameId + ': Excluding outlier source T:' + outlier.tickets + ' (avg was ' + avgTickets + ')', 'info');
+          }
+          validSources = validSources.filter(src => Math.abs(parseInt(src.tickets) - avgTickets) <= 20);
+
+          // Recalculate with non-outlier sources
+          sumTickets = 0;
+          sumMoney = 0;
+          for (const src of validSources) {
+            sumTickets += parseInt(src.tickets) || 0;
+            sumMoney += parseInt(src.money) || 0;
+          }
+          avgTickets = Math.round(sumTickets / validSources.length);
+          avgMoney = Math.round(sumMoney / validSources.length);
+        }
+
+        const count = validSources.length;
+        // Determine confidence based on agreement among non-outlier sources
+        const ticketsVariance = Math.max(...validSources.map(s => Math.abs(parseInt(s.tickets) - avgTickets)));
+        const moneyVariance = Math.max(...validSources.map(s => Math.abs(parseInt(s.money) - avgMoney)));
         let confidence = 'high';
         if (ticketsVariance > 5 || moneyVariance > 5) confidence = 'medium';
         if (ticketsVariance > 10 || moneyVariance > 10) confidence = 'low';
         allResults[gameId] = {
           tickets: String(avgTickets),
           money: String(avgMoney),
-          side: sources_array[0].side,
+          side: validSources[0].side,
           confidence: confidence,
           _sourceCount: count,
-          source: sources_array.map(s => s.source).join('+')
+          source: validSources.map(s => s.source).join('+')
         };
         slog('Game ' + gameId + ': Averaged ' + count + ' sources → T:' + avgTickets + '% M:' + avgMoney + '% (' + confidence + ')', 'info');
       }
@@ -1201,7 +1283,7 @@ function App() {
     return ml < 0 ? Math.abs(ml) / (Math.abs(ml) + 100) : 100 / (ml + 100);
   };
   // Convert ML probability movement to pseudo-spread value for BetScore
-  const probToSpreadEquiv = (probDelta) => probDelta * 30; // 3% shift ≈ 0.9 spread pts
+  const probToSpreadEquiv = (probDelta) => probDelta * 25; // 2% shift ≈ 0.5 spread pts equivalent
 
 
   // ── Apply splits data to game inputs ──
@@ -1227,7 +1309,7 @@ function App() {
               gd._splitsSource = splits.source || 'auto';
               let conf = splits.confidence || 'unknown';
               if (finalT < 15 || finalT > 85 || finalM < 15 || finalM > 85) conf = 'medium';
-              if (Math.abs(finalT - finalM) > 60) conf = 'low';
+              if (Math.abs(finalT - finalM) > 45) conf = 'low';
               gd._splitsConfidence = conf;
               filled++;
               // Calculate RLM: line moved toward team but public money is opposite
