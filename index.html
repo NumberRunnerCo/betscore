@@ -83,6 +83,10 @@ body {
 .games-list { padding: 8px 12px; }
 .game-card { background: var(--card); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; border: 1px solid var(--border); }
 .game-card.has-score { border-color: var(--border-light); }
+.game-card.compact { padding: 8px 12px; }
+.game-card.compact .game-matchup { margin: 4px 0; padding: 4px 0 6px 0 !important; }
+.game-card.compact .card-expandable-section { display: none !important; }
+.game-card.compact .game-header { margin-bottom: 2px; padding: 6px 0 !important; }
 .game-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; font-size: 12px; color: var(--text-dim); font-weight: 600; }
 .game-header-left { display: flex; align-items: center; gap: 8px; }
 .game-refresh { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 4px; font-size: 14px; line-height: 1; }
@@ -275,15 +279,29 @@ body {
 const { useState, useEffect, useCallback, useRef } = React;
 
 
+// Worker URL — hardcoded default, can be overridden in Settings
+const DEFAULT_WORKER_URL = 'https://betscore-proxy.coloradobetting.workers.dev';
+const getWorkerUrl = () => {
+  try { const v = localStorage.getItem('nick-workerUrl'); return v ? JSON.parse(v) : DEFAULT_WORKER_URL; } catch(e) { return DEFAULT_WORKER_URL; }
+};
+
 const fetchWithFallback = async (url, timeoutMs) => {
   const tm = timeoutMs || 8000;
   const withTimeout = (promise) => Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), tm))]);
+  const workerUrl = getWorkerUrl();
   const methods = [
-    () => fetch(url),
+    () => fetch(url), // Try direct first (works for ESPN, Odds API)
+  ];
+  // If worker URL is configured, use it as priority fallback
+  if (workerUrl) {
+    methods.splice(1, 0, () => fetch(workerUrl + '?url=' + encodeURIComponent(url)));
+  }
+  // Free public proxies as last resort
+  methods.push(
     () => fetch('https://corsproxy.io/?' + encodeURIComponent(url)),
     () => fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url)),
     () => fetch('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url)),
-  ];
+  );
   for (let i = 0; i < methods.length; i++) {
     try { const r = await withTimeout(methods[i]()); if (r.ok) return r; } catch(e) {}
   }
@@ -420,11 +438,21 @@ function App() {
   const [expandedCards, setExpandedCards] = useState({});
   const [sharpOnlyFilter, setSharpOnlyFilter] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(load('notificationsEnabled', true));
+  const [workerUrl, setWorkerUrl] = useState(load('workerUrl', DEFAULT_WORKER_URL));
   const [oddsCache, setOddsCache] = useState({});
   const oddsCacheRef = useRef({});
   const [lastFetchTimestamp, setLastFetchTimestamp] = useState(0);
   const lastFetchTimestampRef = useRef(0);
   const addSplitsLog = (msg, type) => { setSplitsLog(prev => [...prev.slice(-30), { msg, type: type || 'info', t: Date.now() }]); };
+  // Feature 1: Auto-Refresh Timer
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(load('autoRefresh', true));
+  const [countdown, setCountdown] = useState('');
+  // Feature 3: Compact Mode
+  const [compactMode, setCompactMode] = useState(load('compactMode', false));
+  // Feature 4: ROI Tracking
+  const [roiStats, setRoiStats] = useState(load('roiStats-' + sport, { totalWagered: 0, totalReturn: 0, bets: 0 }));
+  // Feature 6: Line Movement Alerts
+  const [lineAlertThreshold, setLineAlertThreshold] = useState(load('lineAlertThreshold', 1.0));
 
 
   useEffect(() => { save('sport', sport); }, [sport]);
@@ -438,6 +466,11 @@ function App() {
   useEffect(() => { save('pinned-' + sport, pinnedGames); }, [pinnedGames, sport]);
   useEffect(() => { save('sharpRecords-' + sport, sharpRecords); }, [sharpRecords, sport]);
   useEffect(() => { save('notificationsEnabled', notificationsEnabled); }, [notificationsEnabled]);
+  useEffect(() => { save('workerUrl', workerUrl); }, [workerUrl]);
+  useEffect(() => { save('autoRefresh', autoRefreshEnabled); }, [autoRefreshEnabled]);
+  useEffect(() => { save('compactMode', compactMode); }, [compactMode]);
+  useEffect(() => { save('roiStats-' + sport, roiStats); }, [roiStats, sport]);
+  useEffect(() => { save('lineAlertThreshold', lineAlertThreshold); }, [lineAlertThreshold]);
 
 
   const didAutoFetch = useRef(false);
@@ -459,12 +492,12 @@ function App() {
         lastAutoDay.current = etDate;
         save('lastAutoDay', etDate);
         console.log('[AutoRefresh] 5 AM ET new day — clearing old data & fetching fresh games');
-        // Prune lineHistory before clearing (keep last 50 entries per game for historical reference)
+        // Prune lineHistory before clearing (keep last 200 entries per game for ~3 days of 1-min intervals)
         setGameData(prev => {
           const pruned = {};
           for (const [id, gd] of Object.entries(prev)) {
-            if (gd.lineHistory && gd.lineHistory.length > 50) {
-              pruned[id] = { ...gd, lineHistory: gd.lineHistory.slice(-50) };
+            if (gd.lineHistory && gd.lineHistory.length > 200) {
+              pruned[id] = { ...gd, lineHistory: gd.lineHistory.slice(-200) };
             }
           }
           return Object.keys(pruned).length > 0 ? { ...prev, ...pruned } : prev;
@@ -483,6 +516,39 @@ function App() {
   }, [apiKey]);
 
 
+  // ── Feature 1: Auto-Refresh Countdown Timer ──
+  useEffect(() => {
+    if (!autoRefreshEnabled) {
+      setCountdown('');
+      return;
+    }
+    const updateCountdown = () => {
+      const lastFetch = lastFetchTimestampRef.current;
+      if (lastFetch === 0) {
+        setCountdown('Ready');
+        return;
+      }
+      const elapsed = Date.now() - lastFetch;
+      const cooldownMs = 5 * 60 * 1000; // 5 minutes
+      const remaining = Math.max(0, cooldownMs - elapsed);
+      if (remaining <= 0) {
+        setCountdown('Ready');
+        if (autoRefreshEnabled) {
+          fetchGames();
+          lastFetchTimestampRef.current = Date.now();
+        }
+      } else {
+        const mins = Math.floor(remaining / 60000);
+        const secs = Math.floor((remaining % 60000) / 1000);
+        setCountdown(mins + ':' + (secs < 10 ? '0' : '') + secs);
+      }
+    };
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [autoRefreshEnabled]);
+
+
   const abortRef = useRef(null);
 
 
@@ -495,12 +561,18 @@ function App() {
 
     // Step 0: Find a working CORS proxy first with a simple test
     let workingProxy = null;
+    const workerUrl = getWorkerUrl();
     const proxies = [
       (u) => u,
+    ];
+    // Worker as priority proxy if configured
+    if (workerUrl) proxies.splice(1, 0, (u) => workerUrl + '?url=' + encodeURIComponent(u));
+    // Free fallbacks
+    proxies.push(
       (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
       (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
       (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
-    ];
+    );
     const testUrl = BASE + '/sports';
     for (let i = 0; i < proxies.length; i++) {
       try {
@@ -902,12 +974,16 @@ function App() {
   // ── Auto-fetch betting splits from public sources ──
   // ── Fetch HTML through CORS proxies ──
   const fetchHtml = async (url) => {
+    const workerUrl = getWorkerUrl();
     const proxies = [
       (u) => u,
+    ];
+    if (workerUrl) proxies.splice(1, 0, (u) => workerUrl + '?url=' + encodeURIComponent(u));
+    proxies.push(
       (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
       (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
       (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
-    ];
+    );
     for (let i = 0; i < proxies.length; i++) {
       try {
         const r = await Promise.race([
@@ -1028,6 +1104,8 @@ function App() {
 
 
     let allResults = {};
+    // Collect results from all sources per game ID
+    let perGameSources = {};
 
 
     for (const src of sources) {
@@ -1052,8 +1130,10 @@ function App() {
           slog(src.name + ': ' + count + ' games matched!', 'match');
           srcStatus[src.name] = count + ' games';
           setSplitsSourceStatus({...srcStatus});
+          // Collect ALL results from this source
           for (const [id, val] of Object.entries(data)) {
-            if (!allResults[id]) allResults[id] = { ...val, source: src.name };
+            if (!perGameSources[id]) perGameSources[id] = [];
+            perGameSources[id].push({ ...val, source: src.name });
           }
         } else {
           slog(src.name + ': 0 matches', 'err');
@@ -1064,6 +1144,39 @@ function App() {
         slog(src.name + ': ' + e.message, 'err');
         srcStatus[src.name] = 'failed';
         setSplitsSourceStatus({...srcStatus});
+      }
+    }
+
+    // Average results across sources
+    for (const [gameId, sources_array] of Object.entries(perGameSources)) {
+      if (sources_array.length === 1) {
+        // Single source - use as is with high confidence
+        allResults[gameId] = { ...sources_array[0], confidence: 'high', _sourceCount: 1 };
+      } else {
+        // Multiple sources - average them
+        let sumTickets = 0, sumMoney = 0, count = 0;
+        for (const src of sources_array) {
+          sumTickets += parseInt(src.tickets) || 0;
+          sumMoney += parseInt(src.money) || 0;
+          count++;
+        }
+        const avgTickets = Math.round(sumTickets / count);
+        const avgMoney = Math.round(sumMoney / count);
+        // Determine confidence based on agreement
+        const ticketsVariance = Math.max(...sources_array.map(s => Math.abs(parseInt(s.tickets) - avgTickets)));
+        const moneyVariance = Math.max(...sources_array.map(s => Math.abs(parseInt(s.money) - avgMoney)));
+        let confidence = 'high';
+        if (ticketsVariance > 5 || moneyVariance > 5) confidence = 'medium';
+        if (ticketsVariance > 10 || moneyVariance > 10) confidence = 'low';
+        allResults[gameId] = {
+          tickets: String(avgTickets),
+          money: String(avgMoney),
+          side: sources_array[0].side,
+          confidence: confidence,
+          _sourceCount: count,
+          source: sources_array.map(s => s.source).join('+')
+        };
+        slog('Game ' + gameId + ': Averaged ' + count + ' sources → T:' + avgTickets + '% M:' + avgMoney + '% (' + confidence + ')', 'info');
       }
     }
 
@@ -1416,6 +1529,18 @@ function App() {
               gd.homeCurrentLine = g.spread;
               gd.awayCurrentLine = g.awaySpread != null ? g.awaySpread : -g.spread;
               gd._lastApiHome = g.spread; gd._lastApiAway = g.awaySpread != null ? g.awaySpread : -g.spread;
+              // Check for line movement alerts
+              if (prevHome != null && notificationsEnabled && !gd._graded) {
+                const homeMove = Math.abs((g.spread || 0) - prevHome);
+                if (homeMove >= lineAlertThreshold) {
+                  const dir = (g.spread || 0) > prevHome ? 'up' : 'down';
+                  const msg = g.homeName + ' line moved ' + dir + ' ' + homeMove.toFixed(1) + ' pts';
+                  if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('Line Alert: ' + g.homeName + ' vs ' + g.awayName, { body: msg, tag: 'line-' + g.id });
+                  }
+                  addSplitsLog('Line Alert: ' + msg, 'info');
+                }
+              }
               // Track line history — record every refresh so sparkline always shows
               if (!gd.lineHistory) gd.lineHistory = [];
               const newHomeSpread = g.spread;
@@ -1424,7 +1549,7 @@ function App() {
               // Always push if empty, or if line changed, or if >60s since last entry (periodic snapshot)
               if (!lastHist || lastHist.homeSpread !== newHomeSpread || lastHist.awaySpread !== newAwaySpread || (Date.now() - lastHist.time > 60000)) {
                 gd.lineHistory.push({ time: Date.now(), homeSpread: newHomeSpread, awaySpread: newAwaySpread, total: g.total, homeProb: g.homeProb || null, awayProb: g.awayProb || null });
-                if (gd.lineHistory.length > 200) gd.lineHistory = gd.lineHistory.slice(-200);
+                if (gd.lineHistory.length > 500) gd.lineHistory = gd.lineHistory.slice(-500);
               }
             }
             if ((gd.openTotal == null) && g.total !== null) gd.openTotal = g.total;
@@ -1442,7 +1567,22 @@ function App() {
             if (g.isMlPrimary) {
               gd.isMlPrimary = true;
               if (g.homeML != null) { gd.homeML = g.homeML; gd.awayML = g.awayML; }
-              if (g.homeProb != null) { gd.homeProb = g.homeProb; gd.awayProb = g.awayProb; }
+              if (g.homeProb != null) {
+                const prevProb = gd.homeProb;
+                gd.homeProb = g.homeProb; gd.awayProb = g.awayProb;
+                // Check for ML probability movement alerts (3% threshold)
+                if (prevProb != null && notificationsEnabled && !gd._graded) {
+                  const probMove = Math.abs((g.homeProb || 0) - prevProb);
+                  if (probMove >= 0.03) { // 3% probability movement
+                    const dir = (g.homeProb || 0) > prevProb ? 'up' : 'down';
+                    const msg = g.homeName + ' probability moved ' + dir + ' ' + (probMove * 100).toFixed(1) + '%';
+                    if ('Notification' in window && Notification.permission === 'granted') {
+                      new Notification('ML Alert: ' + g.homeName + ' vs ' + g.awayName, { body: msg, tag: 'ml-' + g.id });
+                    }
+                    addSplitsLog('ML Alert: ' + msg, 'info');
+                  }
+                }
+              }
               if (gd.openHomeProb == null && g.homeProb != null) { gd.openHomeProb = g.homeProb; gd.openAwayProb = g.awayProb; }
               // Track ML probability history for sparklines (if spread history wasn't already recorded)
               if (g.spread === null && g.homeProb != null) {
@@ -1450,7 +1590,7 @@ function App() {
                 const lastHist = gd.lineHistory.length > 0 ? gd.lineHistory[gd.lineHistory.length - 1] : null;
                 if (!lastHist || lastHist.homeProb !== g.homeProb || (Date.now() - lastHist.time > 60000)) {
                   gd.lineHistory.push({ time: Date.now(), homeSpread: null, awaySpread: null, total: g.total, homeProb: g.homeProb, awayProb: g.awayProb });
-                  if (gd.lineHistory.length > 200) gd.lineHistory = gd.lineHistory.slice(-200);
+                  if (gd.lineHistory.length > 500) gd.lineHistory = gd.lineHistory.slice(-500);
                 }
               }
             }
@@ -1740,6 +1880,19 @@ function App() {
       if (spread == null) continue;
       if (!best || spread > best.spread || (spread === best.spread && (juice||0) > (best.juice||0))) {
         best = { book: b.name, spread, juice: juice || 0 };
+      }
+    }
+    return best;
+  };
+
+  const getBestML = (books, side) => {
+    if (!books || books.length === 0) return null;
+    let best = null;
+    for (const b of books) {
+      const ml = side === 'home' ? b.homeML : side === 'away' ? b.awayML : null;
+      if (ml == null) continue;
+      if (!best || ml > best.ml) {
+        best = { book: b.name, ml };
       }
     }
     return best;
@@ -2160,6 +2313,10 @@ function App() {
     const bestAway = getBestLine(game.books, 'away');
     const openBestHome = getBestLine(gd.openBooks || [], 'home');
     const openBestAway = getBestLine(gd.openBooks || [], 'away');
+    const bestHomeML = getBestML(game.books, 'home');
+    const bestAwayML = getBestML(game.books, 'away');
+    const openBestHomeML = getBestML(gd.openBooks || [], 'home');
+    const openBestAwayML = getBestML(gd.openBooks || [], 'away');
     const hasAnyScore = all.home || all.away;
     const spreadDiff = (gd.tickets !== '' && gd.tickets != null && gd.money !== '' && gd.money != null) ? (parseFloat(gd.money)||0) - (parseFloat(gd.tickets)||0) : null;
     const totalDiff = (gd.totalTickets !== '' && gd.totalTickets != null && gd.totalMoney !== '' && gd.totalMoney != null) ? (parseFloat(gd.totalMoney)||0) - (parseFloat(gd.totalTickets)||0) : null;
@@ -2173,7 +2330,7 @@ function App() {
 
 
     return (
-      <div className={'game-card ' + (hasAnyScore ? 'has-score' : '')} key={game.id} style={{position: 'relative'}}>
+      <div className={'game-card ' + (hasAnyScore ? 'has-score' : '') + (compactMode ? ' compact' : '')} key={game.id} style={{position: 'relative'}}>
         {isSharp && <div className="sharp-alert-banner"></div>}
         <div className="card-header-expanded" onClick={toggleExpand} style={{position: 'relative', zIndex: 1}}>
           <div className="game-header" style={{width: '100%', padding: '10px 0', marginBottom: 0}}>
@@ -2218,9 +2375,11 @@ function App() {
               {gd.lockedAwayBS != null && (
                 <span className={getScoreClass(gd.lockedAwayBS)} style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'13px', fontWeight:800, padding:'2px 6px', borderRadius:'4px', background:'rgba(255,255,255,0.06)', lineHeight:1}}>{gd.lockedAwayBS}</span>
               )}
-              {gd.awayClosingLine != null && (
-                <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'11px', fontWeight:600, color:'var(--gold)', opacity:0.8}}>{gd.awayClosingLine > 0 ? '+' : ''}{gd.awayClosingLine}</span>
-              )}
+              {gd._closingLocked && (gd.isMlPrimary ? (
+                gd.closingAwayProb != null && <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'11px', fontWeight:600, color:'var(--gold)', opacity:0.8}}>{Math.round(gd.closingAwayProb * 100)}%</span>
+              ) : (
+                gd.awayClosingLine != null && <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'11px', fontWeight:600, color:'var(--gold)', opacity:0.8}}>{gd.awayClosingLine > 0 ? '+' : ''}{gd.awayClosingLine}</span>
+              ))}
               {(game.gameStatus === 'in' || game.gameStatus === 'post') && game.awayScore && (
                 <span className="live-score">{game.awayScore}</span>
               )}
@@ -2238,9 +2397,11 @@ function App() {
               {gd.lockedHomeBS != null && (
                 <span className={getScoreClass(gd.lockedHomeBS)} style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'13px', fontWeight:800, padding:'2px 6px', borderRadius:'4px', background:'rgba(255,255,255,0.06)', lineHeight:1}}>{gd.lockedHomeBS}</span>
               )}
-              {gd.homeClosingLine != null && (
-                <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'11px', fontWeight:600, color:'var(--gold)', opacity:0.8}}>{gd.homeClosingLine > 0 ? '+' : ''}{gd.homeClosingLine}</span>
-              )}
+              {gd._closingLocked && (gd.isMlPrimary ? (
+                gd.closingHomeProb != null && <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'11px', fontWeight:600, color:'var(--gold)', opacity:0.8}}>{Math.round(gd.closingHomeProb * 100)}%</span>
+              ) : (
+                gd.homeClosingLine != null && <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:'11px', fontWeight:600, color:'var(--gold)', opacity:0.8}}>{gd.homeClosingLine > 0 ? '+' : ''}{gd.homeClosingLine}</span>
+              ))}
               {(game.gameStatus === 'in' || game.gameStatus === 'post') && game.homeScore && (
                 <span className="live-score">{game.homeScore}</span>
               )}
@@ -2248,6 +2409,28 @@ function App() {
           </div>
         </div>
 
+
+        {/* Compact BetScore summary — visible in compact mode */}
+        {compactMode && hasAnyScore && (
+          <div style={{display:'flex',gap:'8px',justifyContent:'center',padding:'6px 0 2px',borderTop:'1px solid var(--border)'}}>
+            {all.home && <div style={{textAlign:'center',flex:1}}>
+              <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{game.homeName}</div>
+              <div className={getScoreClass(all.home.score)} style={{fontFamily:"'JetBrains Mono', monospace",fontSize:'15px',fontWeight:800}}>{all.home.score}</div>
+            </div>}
+            {all.away && <div style={{textAlign:'center',flex:1}}>
+              <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{game.awayName}</div>
+              <div className={getScoreClass(all.away.score)} style={{fontFamily:"'JetBrains Mono', monospace",fontSize:'15px',fontWeight:800}}>{all.away.score}</div>
+            </div>}
+            {all.over && <div style={{textAlign:'center',flex:1}}>
+              <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>Over</div>
+              <div className={getScoreClass(all.over.score)} style={{fontFamily:"'JetBrains Mono', monospace",fontSize:'15px',fontWeight:800}}>{all.over.score}</div>
+            </div>}
+            {all.under && <div style={{textAlign:'center',flex:1}}>
+              <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>Under</div>
+              <div className={getScoreClass(all.under.score)} style={{fontFamily:"'JetBrains Mono', monospace",fontSize:'15px',fontWeight:800}}>{all.under.score}</div>
+            </div>}
+          </div>
+        )}
 
         <div className={`card-expandable-section ${!isExpanded ? 'collapsed' : ''}`}>
         {gd.lineHistory && gd.lineHistory.length >= 1 && (
@@ -2269,7 +2452,7 @@ function App() {
           </div>
         )}
         <div className="inputs-section">
-          <div className="inputs-label" style={{color:'var(--gold)'}}>Spread Splits ({game.homeName}){gd._splitsSource && <span className="splits-auto-badge" style={{background: gd._splitsConfidence === 'high' ? 'var(--green)' : gd._splitsConfidence === 'medium' ? 'var(--yellow)' : gd._splitsConfidence === 'low' ? '#ff9f0a' : 'var(--text-muted)', color: gd._splitsConfidence === 'high' ? 'white' : gd._splitsConfidence === 'medium' ? '#000' : gd._splitsConfidence === 'low' ? 'white' : 'inherit'}}>{gd._splitsConfidence === 'high' ? 'AUTO' : gd._splitsConfidence === 'medium' ? 'AUTO?' : gd._splitsConfidence === 'low' ? 'AUTO??' : 'AUTO'}</span>}</div>
+          <div className="inputs-label" style={{color:'var(--gold)'}}>{gd.isMlPrimary ? 'ML' : 'Spread'} Splits ({game.homeName}){gd._splitsSource && <span className="splits-auto-badge" style={{background: gd._splitsConfidence === 'high' ? 'var(--green)' : gd._splitsConfidence === 'medium' ? 'var(--yellow)' : gd._splitsConfidence === 'low' ? '#ff9f0a' : 'var(--text-muted)', color: gd._splitsConfidence === 'high' ? 'white' : gd._splitsConfidence === 'medium' ? '#000' : gd._splitsConfidence === 'low' ? 'white' : 'inherit'}}>{gd._splitsConfidence === 'high' ? 'AUTO' : gd._splitsConfidence === 'medium' ? 'AUTO?' : gd._splitsConfidence === 'low' ? 'AUTO??' : 'AUTO'}</span>}</div>
           <div className="inputs-grid three">
             <div className="input-group">
               <label>{game.homeName} Tix %</label>
@@ -2315,47 +2498,94 @@ function App() {
 
 
         <div className="inputs-section" style={{borderTop:'1px solid var(--border)'}}>
-          <div className="inputs-label" style={{color:'var(--gold)'}}>Spread Lines (Best Line Per Team)</div>
-          <div style={{fontSize:'9px',color:'var(--text-muted)',fontWeight:700,marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{game.homeName}</div>
-          <div className="inputs-grid" style={{marginBottom:'8px', gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
-            <div className="input-group">
-              <label>Open</label>
-              <input type="number" inputMode="decimal" step="0.5" className="locked" placeholder="--"
-                value={gd.homeOpenLine != null ? gd.homeOpenLine : ''} onChange={e => updateGameData(game.id, 'homeOpenLine', e.target.value)} />
-            </div>
-            {gd._closingLocked && (
+          {gd.isMlPrimary ? (
+            <>
+            <div className="inputs-label" style={{color:'var(--gold)'}}>Win Probability & ML</div>
+            <div style={{fontSize:'9px',color:'var(--text-muted)',fontWeight:700,marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{game.homeName}</div>
+            <div className="inputs-grid" style={{marginBottom:'8px', gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
               <div className="input-group">
-                <label style={{color:'var(--gold)'}}>Closing</label>
-                <input type="number" inputMode="decimal" step="0.5" className="locked" placeholder="--" style={{color:'var(--gold)'}}
-                  value={gd.homeClosingLine != null ? gd.homeClosingLine : ''} readOnly />
+                <label>Open Prob</label>
+                <div className="diff-box" style={{color:'var(--text-dim)', fontSize:'13px', fontWeight:700}}>{gd.openHomeProb != null ? Math.round(gd.openHomeProb * 100) + '%' : '--'}</div>
               </div>
-            )}
-            <div className="input-group">
-              <label>{gd._closingLocked ? 'Live' : 'Current'}</label>
-              <input type="number" inputMode="decimal" step="0.5" className="current-spread" placeholder="--" style={gd._closingLocked ? {color:'var(--text-dim)', fontSize:'12px'} : {}}
-                value={gd.homeCurrentLine != null ? gd.homeCurrentLine : ''} onChange={e => updateGameData(game.id, 'homeCurrentLine', e.target.value)} />
-            </div>
-          </div>
-          <div style={{fontSize:'9px',color:'var(--text-muted)',fontWeight:700,marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{game.awayName}</div>
-          <div className="inputs-grid" style={{marginBottom:'8px', gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
-            <div className="input-group">
-              <label>Open</label>
-              <input type="number" inputMode="decimal" step="0.5" className="locked" placeholder="--"
-                value={gd.awayOpenLine != null ? gd.awayOpenLine : ''} onChange={e => updateGameData(game.id, 'awayOpenLine', e.target.value)} />
-            </div>
-            {gd._closingLocked && (
+              {gd._closingLocked && (
+                <div className="input-group">
+                  <label style={{color:'var(--gold)'}}>Closing</label>
+                  <div className="diff-box" style={{color:'var(--gold)', fontSize:'13px', fontWeight:700}}>{gd.closingHomeProb != null ? Math.round(gd.closingHomeProb * 100) + '%' : (gd.homeProb != null ? Math.round(gd.homeProb * 100) + '%' : '--')}</div>
+                </div>
+              )}
               <div className="input-group">
-                <label style={{color:'var(--gold)'}}>Closing</label>
-                <input type="number" inputMode="decimal" step="0.5" className="locked" placeholder="--" style={{color:'var(--gold)'}}
-                  value={gd.awayClosingLine != null ? gd.awayClosingLine : ''} readOnly />
+                <label>{gd._closingLocked ? 'Live' : 'Current'}</label>
+                <div className="diff-box" style={{color: gd.homeProb != null && gd.openHomeProb != null ? (gd.homeProb > gd.openHomeProb ? 'var(--green)' : gd.homeProb < gd.openHomeProb ? 'var(--red)' : 'var(--text-dim)') : 'var(--text-dim)', fontSize:'13px', fontWeight:700}}>{gd.homeProb != null ? Math.round(gd.homeProb * 100) + '%' : '--'}</div>
               </div>
-            )}
-            <div className="input-group">
-              <label>{gd._closingLocked ? 'Live' : 'Current'}</label>
-              <input type="number" inputMode="decimal" step="0.5" className="current-spread" placeholder="--" style={gd._closingLocked ? {color:'var(--text-dim)', fontSize:'12px'} : {}}
-                value={gd.awayCurrentLine != null ? gd.awayCurrentLine : ''} onChange={e => updateGameData(game.id, 'awayCurrentLine', e.target.value)} />
             </div>
-          </div>
+            <div style={{fontSize:'9px',color:'var(--text-muted)',fontWeight:700,marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{game.awayName}</div>
+            <div className="inputs-grid" style={{marginBottom:'8px', gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
+              <div className="input-group">
+                <label>Open Prob</label>
+                <div className="diff-box" style={{color:'var(--text-dim)', fontSize:'13px', fontWeight:700}}>{gd.openAwayProb != null ? Math.round(gd.openAwayProb * 100) + '%' : '--'}</div>
+              </div>
+              {gd._closingLocked && (
+                <div className="input-group">
+                  <label style={{color:'var(--gold)'}}>Closing</label>
+                  <div className="diff-box" style={{color:'var(--gold)', fontSize:'13px', fontWeight:700}}>{gd.closingAwayProb != null ? Math.round(gd.closingAwayProb * 100) + '%' : (gd.awayProb != null ? Math.round(gd.awayProb * 100) + '%' : '--')}</div>
+                </div>
+              )}
+              <div className="input-group">
+                <label>{gd._closingLocked ? 'Live' : 'Current'}</label>
+                <div className="diff-box" style={{color: gd.awayProb != null && gd.openAwayProb != null ? (gd.awayProb > gd.openAwayProb ? 'var(--green)' : gd.awayProb < gd.openAwayProb ? 'var(--red)' : 'var(--text-dim)') : 'var(--text-dim)', fontSize:'13px', fontWeight:700}}>{gd.awayProb != null ? Math.round(gd.awayProb * 100) + '%' : '--'}</div>
+              </div>
+            </div>
+            {/* Show ML odds inline */}
+            <div style={{display:'flex',gap:'12px',justifyContent:'center',padding:'4px 0 0',fontSize:'11px',color:'var(--text-dim)'}}>
+              <span>{game.homeName}: <strong style={{color:'var(--accent)'}}>{gd.homeML != null ? (gd.homeML > 0 ? '+' : '') + gd.homeML : '--'}</strong></span>
+              <span>{game.awayName}: <strong style={{color:'var(--accent)'}}>{gd.awayML != null ? (gd.awayML > 0 ? '+' : '') + gd.awayML : '--'}</strong></span>
+            </div>
+            </>
+          ) : (
+            <>
+            <div className="inputs-label" style={{color:'var(--gold)'}}>Spread Lines (Best Line Per Team)</div>
+            <div style={{fontSize:'9px',color:'var(--text-muted)',fontWeight:700,marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{game.homeName}</div>
+            <div className="inputs-grid" style={{marginBottom:'8px', gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
+              <div className="input-group">
+                <label>Open</label>
+                <input type="number" inputMode="decimal" step="0.5" className="locked" placeholder="--"
+                  value={gd.homeOpenLine != null ? gd.homeOpenLine : ''} onChange={e => updateGameData(game.id, 'homeOpenLine', e.target.value)} />
+              </div>
+              {gd._closingLocked && (
+                <div className="input-group">
+                  <label style={{color:'var(--gold)'}}>Closing</label>
+                  <input type="number" inputMode="decimal" step="0.5" className="locked" placeholder="--" style={{color:'var(--gold)'}}
+                    value={gd.homeClosingLine != null ? gd.homeClosingLine : ''} readOnly />
+                </div>
+              )}
+              <div className="input-group">
+                <label>{gd._closingLocked ? 'Live' : 'Current'}</label>
+                <input type="number" inputMode="decimal" step="0.5" className="current-spread" placeholder="--" style={gd._closingLocked ? {color:'var(--text-dim)', fontSize:'12px'} : {}}
+                  value={gd.homeCurrentLine != null ? gd.homeCurrentLine : ''} onChange={e => updateGameData(game.id, 'homeCurrentLine', e.target.value)} />
+              </div>
+            </div>
+            <div style={{fontSize:'9px',color:'var(--text-muted)',fontWeight:700,marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{game.awayName}</div>
+            <div className="inputs-grid" style={{marginBottom:'8px', gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
+              <div className="input-group">
+                <label>Open</label>
+                <input type="number" inputMode="decimal" step="0.5" className="locked" placeholder="--"
+                  value={gd.awayOpenLine != null ? gd.awayOpenLine : ''} onChange={e => updateGameData(game.id, 'awayOpenLine', e.target.value)} />
+              </div>
+              {gd._closingLocked && (
+                <div className="input-group">
+                  <label style={{color:'var(--gold)'}}>Closing</label>
+                  <input type="number" inputMode="decimal" step="0.5" className="locked" placeholder="--" style={{color:'var(--gold)'}}
+                    value={gd.awayClosingLine != null ? gd.awayClosingLine : ''} readOnly />
+                </div>
+              )}
+              <div className="input-group">
+                <label>{gd._closingLocked ? 'Live' : 'Current'}</label>
+                <input type="number" inputMode="decimal" step="0.5" className="current-spread" placeholder="--" style={gd._closingLocked ? {color:'var(--text-dim)', fontSize:'12px'} : {}}
+                  value={gd.awayCurrentLine != null ? gd.awayCurrentLine : ''} onChange={e => updateGameData(game.id, 'awayCurrentLine', e.target.value)} />
+              </div>
+            </div>
+            </>
+          )}
           <div className="inputs-label" style={{color:'var(--accent)',marginTop:'4px'}}>Total (O/U)</div>
           <div className="inputs-grid" style={{gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
             <div className="input-group">
@@ -2379,56 +2609,108 @@ function App() {
         </div>
 
 
-        {(openBestHome || openBestAway || bestHome || bestAway) && (
+        {(openBestHome || openBestAway || bestHome || bestAway || openBestHomeML || openBestAwayML || bestHomeML || bestAwayML) && (
           <div className="best-line-section">
             <div className="inputs-label" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span>Best Line (All Books)</span>
+              <span>{gd.isMlPrimary ? 'Best ML (All Books)' : 'Best Line (All Books)'}</span>
               {lastFetch && <span style={{fontSize:'9px',color:'var(--text-muted)',fontWeight:500}}>API: {lastFetch}</span>}
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
               <div>
                 <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--text-muted)',textTransform:'uppercase',marginBottom:'4px'}}>Opening</div>
-                {openBestHome && (
-                  <div className="best-line-row">
-                    <span className="best-line-side">{game.homeName}</span>
-                    <span className="best-line-info">
-                      {openBestHome.spread > 0 ? '+' : ''}{openBestHome.spread} ({openBestHome.juice > 0 ? '+' : ''}{openBestHome.juice})
-                      <span className="best-book" style={{background:'rgba(255,159,10,0.15)',color:'var(--gold)',border:'1px solid rgba(255,159,10,0.3)'}}>{openBestHome.book}</span>
-                    </span>
-                  </div>
+                {gd.isMlPrimary ? (
+                  <>
+                  {openBestHomeML && (
+                    <div className="best-line-row">
+                      <span className="best-line-side">{game.homeName}</span>
+                      <span className="best-line-info">
+                        {openBestHomeML.ml > 0 ? '+' : ''}{openBestHomeML.ml}
+                        <span className="best-book" style={{background:'rgba(255,159,10,0.15)',color:'var(--gold)',border:'1px solid rgba(255,159,10,0.3)'}}>{openBestHomeML.book}</span>
+                      </span>
+                    </div>
+                  )}
+                  {openBestAwayML && (
+                    <div className="best-line-row">
+                      <span className="best-line-side">{game.awayName}</span>
+                      <span className="best-line-info">
+                        {openBestAwayML.ml > 0 ? '+' : ''}{openBestAwayML.ml}
+                        <span className="best-book" style={{background:'rgba(255,159,10,0.15)',color:'var(--gold)',border:'1px solid rgba(255,159,10,0.3)'}}>{openBestAwayML.book}</span>
+                      </span>
+                    </div>
+                  )}
+                  {!openBestHomeML && !openBestAwayML && <div style={{fontSize:'11px',color:'var(--text-muted)',padding:'4px 0'}}>No qualifying lines</div>}
+                  </>
+                ) : (
+                  <>
+                  {openBestHome && (
+                    <div className="best-line-row">
+                      <span className="best-line-side">{game.homeName}</span>
+                      <span className="best-line-info">
+                        {openBestHome.spread > 0 ? '+' : ''}{openBestHome.spread} ({openBestHome.juice > 0 ? '+' : ''}{openBestHome.juice})
+                        <span className="best-book" style={{background:'rgba(255,159,10,0.15)',color:'var(--gold)',border:'1px solid rgba(255,159,10,0.3)'}}>{openBestHome.book}</span>
+                      </span>
+                    </div>
+                  )}
+                  {openBestAway && (
+                    <div className="best-line-row">
+                      <span className="best-line-side">{game.awayName}</span>
+                      <span className="best-line-info">
+                        {openBestAway.spread > 0 ? '+' : ''}{openBestAway.spread} ({openBestAway.juice > 0 ? '+' : ''}{openBestAway.juice})
+                        <span className="best-book" style={{background:'rgba(255,159,10,0.15)',color:'var(--gold)',border:'1px solid rgba(255,159,10,0.3)'}}>{openBestAway.book}</span>
+                      </span>
+                    </div>
+                  )}
+                  {!openBestHome && !openBestAway && <div style={{fontSize:'11px',color:'var(--text-muted)',padding:'4px 0'}}>No qualifying lines</div>}
+                  </>
                 )}
-                {openBestAway && (
-                  <div className="best-line-row">
-                    <span className="best-line-side">{game.awayName}</span>
-                    <span className="best-line-info">
-                      {openBestAway.spread > 0 ? '+' : ''}{openBestAway.spread} ({openBestAway.juice > 0 ? '+' : ''}{openBestAway.juice})
-                      <span className="best-book" style={{background:'rgba(255,159,10,0.15)',color:'var(--gold)',border:'1px solid rgba(255,159,10,0.3)'}}>{openBestAway.book}</span>
-                    </span>
-                  </div>
-                )}
-                {!openBestHome && !openBestAway && <div style={{fontSize:'11px',color:'var(--text-muted)',padding:'4px 0'}}>No qualifying lines</div>}
               </div>
               <div>
                 <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--green)',textTransform:'uppercase',marginBottom:'4px'}}>Live</div>
-                {bestHome && (
-                  <div className="best-line-row">
-                    <span className="best-line-side">{game.homeName}</span>
-                    <span className="best-line-info">
-                      {bestHome.spread > 0 ? '+' : ''}{bestHome.spread} ({bestHome.juice > 0 ? '+' : ''}{bestHome.juice})
-                      <span className="best-book" style={{background:'rgba(52,211,153,0.15)',color:'var(--green)',border:'1px solid rgba(52,211,153,0.3)'}}>{bestHome.book}</span>
-                    </span>
-                  </div>
+                {gd.isMlPrimary ? (
+                  <>
+                  {bestHomeML && (
+                    <div className="best-line-row">
+                      <span className="best-line-side">{game.homeName}</span>
+                      <span className="best-line-info">
+                        {bestHomeML.ml > 0 ? '+' : ''}{bestHomeML.ml}
+                        <span className="best-book" style={{background:'rgba(52,211,153,0.15)',color:'var(--green)',border:'1px solid rgba(52,211,153,0.3)'}}>{bestHomeML.book}</span>
+                      </span>
+                    </div>
+                  )}
+                  {bestAwayML && (
+                    <div className="best-line-row">
+                      <span className="best-line-side">{game.awayName}</span>
+                      <span className="best-line-info">
+                        {bestAwayML.ml > 0 ? '+' : ''}{bestAwayML.ml}
+                        <span className="best-book" style={{background:'rgba(52,211,153,0.15)',color:'var(--green)',border:'1px solid rgba(52,211,153,0.3)'}}>{bestAwayML.book}</span>
+                      </span>
+                    </div>
+                  )}
+                  {!bestHomeML && !bestAwayML && <div style={{fontSize:'11px',color:'var(--text-muted)',padding:'4px 0'}}>No qualifying lines</div>}
+                  </>
+                ) : (
+                  <>
+                  {bestHome && (
+                    <div className="best-line-row">
+                      <span className="best-line-side">{game.homeName}</span>
+                      <span className="best-line-info">
+                        {bestHome.spread > 0 ? '+' : ''}{bestHome.spread} ({bestHome.juice > 0 ? '+' : ''}{bestHome.juice})
+                        <span className="best-book" style={{background:'rgba(52,211,153,0.15)',color:'var(--green)',border:'1px solid rgba(52,211,153,0.3)'}}>{bestHome.book}</span>
+                      </span>
+                    </div>
+                  )}
+                  {bestAway && (
+                    <div className="best-line-row">
+                      <span className="best-line-side">{game.awayName}</span>
+                      <span className="best-line-info">
+                        {bestAway.spread > 0 ? '+' : ''}{bestAway.spread} ({bestAway.juice > 0 ? '+' : ''}{bestAway.juice})
+                        <span className="best-book" style={{background:'rgba(52,211,153,0.15)',color:'var(--green)',border:'1px solid rgba(52,211,153,0.3)'}}>{bestAway.book}</span>
+                      </span>
+                    </div>
+                  )}
+                  {!bestHome && !bestAway && <div style={{fontSize:'11px',color:'var(--text-muted)',padding:'4px 0'}}>No qualifying lines</div>}
+                  </>
                 )}
-                {bestAway && (
-                  <div className="best-line-row">
-                    <span className="best-line-side">{game.awayName}</span>
-                    <span className="best-line-info">
-                      {bestAway.spread > 0 ? '+' : ''}{bestAway.spread} ({bestAway.juice > 0 ? '+' : ''}{bestAway.juice})
-                      <span className="best-book" style={{background:'rgba(52,211,153,0.15)',color:'var(--green)',border:'1px solid rgba(52,211,153,0.3)'}}>{bestAway.book}</span>
-                    </span>
-                  </div>
-                )}
-                {!bestHome && !bestAway && <div style={{fontSize:'11px',color:'var(--text-muted)',padding:'4px 0'}}>No qualifying lines</div>}
               </div>
             </div>
           </div>
@@ -2522,6 +2804,7 @@ function App() {
             setHistory(load('history-' + key, []));
             setPinnedGames(load('pinned-' + key, []));
             setSharpRecords(load('sharpRecords-' + key, { wins: 0, losses: 0, pushes: 0, clvBeats: 0, clvMisses: 0, history: [] }));
+            setRoiStats(load('roiStats-' + key, { totalWagered: 0, totalReturn: 0, bets: 0 }));
             lastFetchTimestampRef.current = 0;
             setLastFetchTimestamp(0); // Reset cooldown for new sport
           }} style={{padding: '6px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 600, border: '1px solid ' + (sport === key ? 'var(--gold)' : 'var(--border)'), background: sport === key ? 'var(--gold)' : 'transparent', color: sport === key ? '#000' : 'var(--text-dim)', cursor: 'pointer', transition: 'all 0.2s'}}>
@@ -2533,9 +2816,10 @@ function App() {
       <div className="status-bar">
         <span className="pill"><span className="dot" style={{background: games.length > 0 ? 'var(--green)' : 'var(--red)'}}></span>{games.length} games</span>
         <span className="pill"><span className="dot" style={{background: remaining !== '?' && parseInt(remaining) > 50 ? 'var(--green)' : 'var(--yellow)'}}></span>{remaining} credits</span>
-        {lastFetch && <span className="pill">{lastFetch}</span>}
+        <span className="pill" onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)} style={{cursor:'pointer'}}><span className="dot" style={{background: autoRefreshEnabled ? 'var(--green)' : 'var(--text-muted)'}}></span>{countdown || 'Ready'} {autoRefreshEnabled ? '⟳' : '⏸'}</span>
         <span className="pill"><span className="dot" style={{background: !splitsStatus || splitsStatus.includes('error') || splitsStatus.includes('no ') ? 'var(--red)' : splitsStatus.includes('load') || splitsStatus.includes('try') ? 'var(--yellow)' : 'var(--green)'}}></span>Splits: {splitsStatus || 'idle'}</span>
         <span className="pill"><span className="dot" style={{background: !polyStatus || polyStatus.includes('error') || polyStatus.includes('0 ') ? 'var(--red)' : polyStatus.includes('load') ? 'var(--yellow)' : '#8b5cf6'}}></span>Poly: {polyStatus || 'waiting'}</span>
+        {workerUrl && <span className="pill"><span className="dot" style={{background: 'var(--green)'}}></span>CF Worker</span>}
       </div>
 
 
@@ -2546,11 +2830,32 @@ function App() {
         <label>Odds API Key</label>
         <input type="text" value={apiKey} onChange={e => setApiKey(e.target.value.trim())} placeholder="Paste key here" />
         <div className="hint">Free at the-odds-api.com - 500 calls/month</div>
+        <label style={{marginTop: '12px'}}>CORS Proxy (Cloudflare Worker)</label>
+        <input type="text" value={workerUrl} onChange={e => setWorkerUrl(e.target.value.trim())} placeholder={DEFAULT_WORKER_URL} style={{color: workerUrl ? 'var(--green)' : 'var(--accent)'}} />
+        <div className="hint">{workerUrl ? '✅ Worker active — using as primary proxy' : 'Pre-configured — no setup needed!'}</div>
+        {workerUrl && (
+          <button onClick={async () => {
+            try {
+              const r = await fetch(workerUrl + '?url=' + encodeURIComponent('https://gamma-api.polymarket.com/sports'));
+              if (r.ok) {
+                const text = await r.text();
+                alert('✅ Worker is working! Response: ' + text.length + ' bytes');
+              } else {
+                alert('❌ Worker returned HTTP ' + r.status);
+              }
+            } catch(e) { alert('❌ Worker unreachable: ' + e.message); }
+          }} style={{marginTop:'6px', padding:'6px 12px', background:'rgba(52,199,89,0.15)', color:'var(--green)', border:'1px solid rgba(52,199,89,0.3)', borderRadius:'6px', fontSize:'11px', fontWeight:700, cursor:'pointer'}}>
+            Test Worker Connection
+          </button>
+        )}
         <label style={{marginTop: '12px', display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: 600}}>
           <input type="checkbox" checked={notificationsEnabled} onChange={e => setNotificationsEnabled(e.target.checked)} style={{marginRight: '8px', cursor: 'pointer', width: 'auto'}} />
           <span style={{fontSize: '12px', textTransform: 'capitalize'}}>🔔 Sharp Play Notifications</span>
         </label>
         <div style={{marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)'}}>⏰ Auto-refreshes daily at 5 AM ET for fresh lines</div>
+        <label style={{marginTop:'12px'}}>Line Move Alert (pts)</label>
+        <input type="number" step="0.5" min="0.5" max="5" value={lineAlertThreshold} onChange={e => setLineAlertThreshold(parseFloat(e.target.value) || 1)} style={{width:'80px'}} />
+        <div className="hint">Alert when a line moves more than this many points</div>
         <div style={{marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '12px'}}>
           <label style={{fontSize: '11px', color: 'var(--text-dim)', display: 'block', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px'}}>Backup & Restore</label>
           <button onClick={() => {
@@ -2560,10 +2865,12 @@ function App() {
               games: games,
               gameData: gameData,
               sharpRecords: sharpRecords,
+              roiStats: roiStats,
               history: history,
               bets: bets,
               pinnedGames: pinnedGames,
-              apiKey: apiKey
+              apiKey: apiKey,
+              workerUrl: workerUrl
             };
             const json = JSON.stringify(backup, null, 2);
             const blob = new Blob([json], {type: 'application/json'});
@@ -2589,10 +2896,12 @@ function App() {
                 if (backup.games) setGames(backup.games);
                 setGameData(backup.gameData || {});
                 setSharpRecords(backup.sharpRecords || { wins: 0, losses: 0, pushes: 0, clvBeats: 0, clvMisses: 0, history: [] });
+                setRoiStats(backup.roiStats || { totalWagered: 0, totalReturn: 0, bets: 0 });
                 setHistory(backup.history || []);
                 setBets(backup.bets || {});
                 setPinnedGames(backup.pinnedGames || []);
                 if (backup.apiKey) setApiKey(backup.apiKey);
+                if (backup.workerUrl) setWorkerUrl(backup.workerUrl);
                 alert('Backup restored! Sport: ' + (backup.sport ? SPORT_CONFIG[backup.sport]?.name || backup.sport : 'default'));
               } catch(err) {
                 alert('Error restoring backup: ' + err.message);
@@ -2611,6 +2920,9 @@ function App() {
         {loading ? <><span className="spinner"></span> Fetching...</> : games.length > 0 ? 'Refresh Games & Lines' : "Fetch Today's Games"}
       </button>
 
+      <div style={{display:'flex',gap:'8px',justifyContent:'center',marginBottom:'8px'}}>
+        <button onClick={() => setCompactMode(!compactMode)} style={{padding:'6px 14px',borderRadius:'20px',fontSize:'11px',fontWeight:700,border:'1px solid var(--border)',background:compactMode ? 'var(--accent)' : 'transparent',color:compactMode ? '#000' : 'var(--text-dim)',cursor:'pointer'}}>{compactMode ? '◉ Compact' : '○ Compact'}</button>
+      </div>
 
       {games.length > 0 && (
         <button className="export-btn" onClick={exportToExcel}>
@@ -2781,6 +3093,11 @@ function App() {
               </div>
             </div>
           )}
+          <div style={{display:'flex',gap:'12px',justifyContent:'center',padding:'8px 0',fontSize:'11px',color:'var(--text-dim)'}}>
+            <span>Wagered: <strong style={{color:'var(--accent)'}}>${roiStats.totalWagered}</strong></span>
+            <span>Return: <strong style={{color: roiStats.totalReturn >= roiStats.totalWagered ? 'var(--green)' : 'var(--red)'}}>${roiStats.totalReturn}</strong></span>
+            <span>ROI: <strong style={{color: (roiStats.totalReturn - roiStats.totalWagered) >= 0 ? 'var(--green)' : 'var(--red)'}}>{roiStats.totalWagered > 0 ? ((roiStats.totalReturn - roiStats.totalWagered) / roiStats.totalWagered * 100).toFixed(1) : 0}%</strong></span>
+          </div>
           <div className="section-header">
             <span className="section-title">Day of Game Splits</span>
             <span className="section-badge">TheSpread.com</span>
