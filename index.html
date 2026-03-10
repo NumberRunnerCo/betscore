@@ -2534,7 +2534,7 @@ function App() {
           </div>
         )}
         <div className="inputs-section">
-          <div className="inputs-label" style={{color:'var(--gold)'}}>{gd.isMlPrimary ? 'ML' : 'Spread'} Splits ({game.homeName}){gd._splitsSource && <span className="splits-auto-badge" style={{background: gd._splitsConfidence === 'high' ? 'var(--green)' : gd._splitsConfidence === 'medium' ? 'var(--yellow)' : gd._splitsConfidence === 'low' ? '#ff9f0a' : 'var(--text-muted)', color: gd._splitsConfidence === 'high' ? 'white' : gd._splitsConfidence === 'medium' ? '#000' : gd._splitsConfidence === 'low' ? 'white' : 'inherit'}}>{gd._splitsConfidence === 'high' ? 'AUTO' : gd._splitsConfidence === 'medium' ? 'AUTO?' : gd._splitsConfidence === 'low' ? 'AUTO??' : 'AUTO'}</span>}</div>
+          <div className="inputs-label" style={{color:'var(--gold)'}}>{gd.isMlPrimary ? 'ML' : 'Spread'} Splits ({game.homeName}){gd._splitsSource && <span className="splits-auto-badge" style={{background: gd._splitsConfidence === 'high' ? 'var(--green)' : gd._splitsConfidence === 'medium' ? 'var(--yellow)' : gd._splitsConfidence === 'low' ? '#ff9f0a' : 'var(--text-muted)', color: gd._splitsConfidence === 'high' ? 'white' : gd._splitsConfidence === 'medium' ? '#000' : gd._splitsConfidence === 'low' ? 'white' : 'inherit'}}>{gd._splitsConfidence === 'high' ? 'HIGH' : gd._splitsConfidence === 'medium' ? 'MED' : gd._splitsConfidence === 'low' ? 'LOW' : 'AUTO'}</span>}</div>
           <div className="inputs-grid three">
             <div className="input-group">
               <label>{game.homeName} Tix %</label>
