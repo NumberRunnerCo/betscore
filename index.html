@@ -1295,8 +1295,8 @@ function App() {
       for (const [gameId, splits] of Object.entries(splitsData)) {
         if (next[gameId]) {
           const gd = next[gameId];
-          // Don't update splits for locked (live/final) games — BetScore should be frozen
-          if (gd._closingLocked) continue;
+          // Don't auto-update splits for locked (live/final) games — only manual overwrite allowed
+          if (gd._closingLocked && !overwrite) continue;
           if (overwrite || gd.tickets === '' || gd.tickets == null) {
             const finalT = splits.side === 'home' ? parseInt(splits.tickets) : 100 - parseInt(splits.tickets);
             const finalM = splits.side === 'home' ? parseInt(splits.money) : 100 - parseInt(splits.money);
@@ -1306,6 +1306,9 @@ function App() {
             } else {
               gd.tickets = String(finalT);
               gd.money = String(finalM);
+              gd._autoTickets = String(finalT);
+              gd._autoMoney = String(finalM);
+              gd._manualEdit = false;
               gd._splitsSource = splits.source || 'auto';
               let conf = splits.confidence || 'unknown';
               if (finalT < 15 || finalT > 85 || finalM < 15 || finalM > 85) conf = 'medium';
@@ -1362,7 +1365,7 @@ function App() {
   const handleManualFetchSplits = async () => {
     if (games.length === 0) return;
     const data = await fetchBettingSplits(games, true);
-    if (Object.keys(data).length > 0) applySplitsToGames(data, false);
+    if (Object.keys(data).length > 0) applySplitsToGames(data, true);
   };
 
 
@@ -1990,14 +1993,17 @@ function App() {
     setGameData(prev => {
       const next = { ...prev, [id]: { ...prev[id], [field]: value } };
       const gd = next[id];
-      // Auto-lock: if spread splits just became complete and not yet locked
-      if (gd.tickets !== '' && gd.money !== '' && gd.lockedHomeBS == null) {
+      // Track manual edits to splits fields
+      const isSplitsField = field === 'tickets' || field === 'money' || field === 'totalTickets' || field === 'totalMoney';
+      if (isSplitsField) gd._manualEdit = true;
+      // Auto-lock or RE-lock: recalculate BetScore when splits change
+      if (gd.tickets !== '' && gd.money !== '') {
         const all = calcAll(gd);
         if (all.home) gd.lockedHomeBS = all.home.score;
         if (all.away) gd.lockedAwayBS = all.away.score;
       }
-      // Auto-lock totals
-      if (gd.totalTickets !== '' && gd.totalMoney !== '' && gd.lockedOverBS == null) {
+      // Auto-lock totals (recalculate on edit too)
+      if (gd.totalTickets !== '' && gd.totalMoney !== '') {
         const all = calcAll(gd);
         if (all.over) gd.lockedOverBS = all.over.score;
         if (all.under) gd.lockedUnderBS = all.under.score;
@@ -2194,6 +2200,7 @@ function App() {
 
   // ── Get color class for BetScore gradient ──
   const getScoreClass = (s) => {
+    if (s == null || isNaN(s)) return 'score-0-39';
     if (s >= 120) return 'score-120plus';
     if (s >= 80) return 'score-80-119';
     if (s >= 40) return 'score-40-79';
@@ -2534,7 +2541,7 @@ function App() {
           </div>
         )}
         <div className="inputs-section">
-          <div className="inputs-label" style={{color:'var(--gold)'}}>{gd.isMlPrimary ? 'ML' : 'Spread'} Splits ({game.homeName}){gd._splitsSource && <span className="splits-auto-badge" style={{background: gd._splitsConfidence === 'high' ? 'var(--green)' : gd._splitsConfidence === 'medium' ? 'var(--yellow)' : gd._splitsConfidence === 'low' ? '#ff9f0a' : 'var(--text-muted)', color: gd._splitsConfidence === 'high' ? 'white' : gd._splitsConfidence === 'medium' ? '#000' : gd._splitsConfidence === 'low' ? 'white' : 'inherit'}}>{gd._splitsConfidence === 'high' ? 'HIGH' : gd._splitsConfidence === 'medium' ? 'MED' : gd._splitsConfidence === 'low' ? 'LOW' : 'AUTO'}</span>}</div>
+          <div className="inputs-label" style={{color:'var(--gold)', display:'flex', alignItems:'center', justifyContent:'space-between'}}><span>{gd.isMlPrimary ? 'ML' : 'Spread'} Splits ({game.homeName}){gd._splitsSource && <span className="splits-auto-badge" style={{background: gd._splitsConfidence === 'high' ? 'var(--green)' : gd._splitsConfidence === 'medium' ? 'var(--yellow)' : gd._splitsConfidence === 'low' ? '#ff9f0a' : 'var(--text-muted)', color: gd._splitsConfidence === 'high' ? 'white' : gd._splitsConfidence === 'medium' ? '#000' : gd._splitsConfidence === 'low' ? 'white' : 'inherit'}}>{gd._splitsConfidence === 'high' ? 'HIGH' : gd._splitsConfidence === 'medium' ? 'MED' : gd._splitsConfidence === 'low' ? 'LOW' : 'AUTO'}</span>}</span>{gd._manualEdit && gd._autoTickets && <button onClick={() => setGameData(prev => { const next = {...prev}; const g = next[game.id]; g.tickets = g._autoTickets; g.money = g._autoMoney; g._manualEdit = false; const all = calcAll(g); if (all.home) g.lockedHomeBS = all.home.score; if (all.away) g.lockedAwayBS = all.away.score; return next; })} style={{background:'none',border:'1px solid var(--accent)',color:'var(--accent)',fontSize:'8px',fontWeight:800,padding:'2px 6px',borderRadius:'4px',cursor:'pointer',letterSpacing:'0.5px'}}>REVERT</button>}</div>
           <div className="inputs-grid three">
             <div className="input-group">
               <label>{game.homeName} Tix %</label>
