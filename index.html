@@ -736,9 +736,16 @@ function App() {
           // Also store raw lowercase
           const raw = o.toLowerCase().trim();
           if (raw.length > 2) polyMap['_raw_' + raw] = entry;
-          // Last word (mascot name like "Lakers", "Celtics") — pro sports only, skip for college (too many dupes)
+          // Last word (mascot name like "Lakers", "Celtics") — store only if unique, delete if ambiguous (e.g. multiple "Rebels", "Bulldogs")
           const lastWord = pro.split(' ').pop();
-          if (lastWord && lastWord.length >= 4) polyMap['_last_' + lastWord] = entry;
+          if (lastWord && lastWord.length >= 4) {
+            const lkey = '_last_' + lastWord;
+            if (lkey in polyMap) {
+              if (polyMap[lkey] !== entry) { delete polyMap[lkey]; } // ambiguous mascot — remove
+            } else {
+              polyMap[lkey] = entry;
+            }
+          }
         }
         const title = (ev.title || ev.question || '').toLowerCase();
         polyMap['_title_' + title] = entry;
@@ -1661,6 +1668,21 @@ function App() {
             }
             if (gd.homeOpenLine == null && g.spread !== null && g.spread !== 0) { gd.homeOpenLine = g.spread; gd.awayOpenLine = g.awaySpread != null ? g.awaySpread : -g.spread; }
             if (gd.openTotal == null && g.total !== null && g.total !== 0) { gd.openTotal = g.total; }
+            // CRITICAL: Lock closing line BEFORE updating current lines — so _lastApiHome still holds the last PRE-GAME value
+            if ((g.gameStatus === 'in' || g.gameStatus === 'post') && !gd._closingLocked) {
+              gd.homeClosingLine = gd._lastApiHome;
+              gd.awayClosingLine = gd._lastApiAway;
+              gd.closingTotal = gd._lastApiTotal;
+              gd.closingHomeProb = gd.homeProb;
+              gd.closingAwayProb = gd.awayProb;
+              gd._closingLocked = true;
+              const lockCalc = calcAll(gd);
+              if (lockCalc.home) gd.lockedHomeBS = lockCalc.home.score;
+              if (lockCalc.away) gd.lockedAwayBS = lockCalc.away.score;
+              if (lockCalc.over) gd.lockedOverBS = lockCalc.over.score;
+              if (lockCalc.under) gd.lockedUnderBS = lockCalc.under.score;
+              console.log('[Lock] ' + g.homeName + ' vs ' + g.awayName + ' — closing locked at H:' + gd.homeClosingLine + ' A:' + gd.awayClosingLine + ' T:' + gd.closingTotal);
+            }
             if (g.spread !== null) {
               // Always update current/live lines from API — use per-team best spreads
               const prevHome = gd.homeCurrentLine;
@@ -1668,8 +1690,8 @@ function App() {
               gd.homeCurrentLine = g.spread;
               gd.awayCurrentLine = g.awaySpread != null ? g.awaySpread : -g.spread;
               gd._lastApiHome = g.spread; gd._lastApiAway = g.awaySpread != null ? g.awaySpread : -g.spread;
-              // Check for line movement alerts
-              if (prevHome != null && notificationsEnabled && !gd._graded) {
+              // Check for line movement alerts — only pre-game (not during live games where lines swing constantly)
+              if (prevHome != null && notificationsEnabled && !gd._graded && !gd._closingLocked) {
                 const homeMove = Math.abs((g.spread || 0) - prevHome);
                 if (homeMove >= lineAlertThreshold) {
                   const dir = (g.spread || 0) > prevHome ? 'up' : 'down';
@@ -1709,8 +1731,8 @@ function App() {
               if (g.homeProb != null) {
                 const prevProb = gd.homeProb;
                 gd.homeProb = g.homeProb; gd.awayProb = g.awayProb;
-                // Check for ML probability movement alerts (3% threshold)
-                if (prevProb != null && notificationsEnabled && !gd._graded) {
+                // Check for ML probability movement alerts (3% threshold) — only pre-game
+                if (prevProb != null && notificationsEnabled && !gd._graded && !gd._closingLocked) {
                   const probMove = Math.abs((g.homeProb || 0) - prevProb);
                   if (probMove >= 0.03) { // 3% probability movement
                     const dir = (g.homeProb || 0) > prevProb ? 'up' : 'down';
@@ -1733,22 +1755,7 @@ function App() {
                 }
               }
             }
-            // Lock closing line AND BetScore when game starts (status changes to 'in' or 'post')
-            if ((g.gameStatus === 'in' || g.gameStatus === 'post') && !gd._closingLocked) {
-              gd.homeClosingLine = gd._lastApiHome;
-              gd.awayClosingLine = gd._lastApiAway;
-              gd.closingTotal = gd._lastApiTotal;
-              // Lock ML probabilities too
-              gd.closingHomeProb = gd.homeProb;
-              gd.closingAwayProb = gd.awayProb;
-              gd._closingLocked = true;
-              // Re-lock BetScore using the closing line (overwrite any pre-game lock)
-              const lockCalc = calcAll(gd);
-              if (lockCalc.home) gd.lockedHomeBS = lockCalc.home.score;
-              if (lockCalc.away) gd.lockedAwayBS = lockCalc.away.score;
-              if (lockCalc.over) gd.lockedOverBS = lockCalc.over.score;
-              if (lockCalc.under) gd.lockedUnderBS = lockCalc.under.score;
-            }
+            // (closing lock now happens BEFORE line updates — see above)
           }
         }
         return next;
