@@ -505,20 +505,15 @@ function App() {
         lastAutoDay.current = etDate;
         save('lastAutoDay', etDate);
         console.log('[AutoRefresh] 5 AM ET new day — clearing old data & fetching fresh games');
-        // Prune lineHistory before clearing (keep last 200 entries per game for ~3 days of 1-min intervals)
-        setGameData(prev => {
-          const pruned = {};
-          for (const [id, gd] of Object.entries(prev)) {
-            if (gd.lineHistory && gd.lineHistory.length > 200) {
-              pruned[id] = { ...gd, lineHistory: gd.lineHistory.slice(-200) };
-            }
-          }
-          return Object.keys(pruned).length > 0 ? { ...prev, ...pruned } : prev;
-        });
-        // Clear old game data for fresh slate
-        setGameData({});
+        // Clear old game data for fresh slate, then fetch
         save('gameData-' + sport, {});
-        fetchGames();
+        setGameData(() => {
+          // Use updater form to ensure this completes before next render
+          // fetchGames will read from fresh state via its own setGameData(prev => ...)
+          return {};
+        });
+        // Delay fetch slightly to let React process the state clear
+        setTimeout(() => fetchGames(), 100);
       }
     };
     // Check immediately on load
@@ -1124,7 +1119,19 @@ function App() {
         let tableText = '';
         rows.forEach(r => {
           const cells = Array.from(r.querySelectorAll('td, th')).map(c => (c.innerText || c.textContent || '').trim());
-          tableText += cells.join('\t') + '\n';
+          // Detect stacked-pair format: cells with \n inside (e.g. VSiN/DK puts Team1\nTeam2 in each cell)
+          const hasStacked = cells.some(c => c.includes('\n'));
+          if (hasStacked) {
+            // Split each cell by newline and create separate sub-rows (one per team)
+            const splitCells = cells.map(c => c.split('\n').map(s => s.trim()));
+            const maxSubRows = Math.max(...splitCells.map(sc => sc.length));
+            for (let sr = 0; sr < maxSubRows; sr++) {
+              const subRow = splitCells.map(sc => sc[sr] || '');
+              if (subRow.some(x => x.trim())) tableText += subRow.join('\t') + '\n';
+            }
+          } else {
+            tableText += cells.join('\t') + '\n';
+          }
         });
         const r = parseSplitsText(tableText, gamesList);
         if (Object.keys(r).length > 0) return r;
@@ -1219,59 +1226,89 @@ function App() {
       }
     }
 
-    // Average results across sources
+    // Average results across sources — normalize all to HOME side first
     for (const [gameId, sources_array] of Object.entries(perGameSources)) {
-      if (sources_array.length === 1) {
-        // Single source - use as is with high confidence
-        allResults[gameId] = { ...sources_array[0], confidence: 'high', _sourceCount: 1 };
+      // Normalize every source to home-team perspective before comparing
+      const normalized = sources_array.map(src => {
+        const t = parseInt(src.tickets) || 0;
+        const m = parseInt(src.money) || 0;
+        const homeT = src.side === 'home' ? t : 100 - t;
+        const homeM = src.side === 'home' ? m : 100 - m;
+        return { ...src, homeTickets: homeT, homeMoney: homeM };
+      });
+
+      if (normalized.length === 1) {
+        allResults[gameId] = { tickets: String(normalized[0].homeTickets), money: String(normalized[0].homeMoney), side: 'home', confidence: 'high', _sourceCount: 1, source: normalized[0].source };
       } else {
-        // Multiple sources - detect and exclude outliers before averaging
-        let validSources = [...sources_array];
+        // Log each source's values for sanity checking
+        const srcDetails = normalized.map(s => s.source + ':T' + s.homeTickets + '/M' + s.homeMoney).join(', ');
+        slog('Game ' + gameId + ' sources: ' + srcDetails, 'info');
+
+        let validSources = [...normalized];
 
         // Calculate initial average to detect outliers
-        let sumTickets = 0, sumMoney = 0;
-        for (const src of validSources) {
-          sumTickets += parseInt(src.tickets) || 0;
-          sumMoney += parseInt(src.money) || 0;
-        }
-        let avgTickets = Math.round(sumTickets / validSources.length);
-        let avgMoney = Math.round(sumMoney / validSources.length);
+        let sumT = 0, sumM = 0;
+        for (const s of validSources) { sumT += s.homeTickets; sumM += s.homeMoney; }
+        let avgT = Math.round(sumT / validSources.length);
+        let avgM = Math.round(sumM / validSources.length);
 
-        // Exclude sources that disagree by more than 20 percentage points on tickets
-        const outliers = validSources.filter(src => Math.abs(parseInt(src.tickets) - avgTickets) > 20);
+        // Detect flipped sources: if a source disagrees by 30+ pts AND flipping it brings it close, it's likely backwards
+        for (const s of validSources) {
+          const diff = Math.abs(s.homeTickets - avgT);
+          const flippedDiff = Math.abs((100 - s.homeTickets) - avgT);
+          if (validSources.length >= 3 && diff > 30 && flippedDiff < 15) {
+            slog('Game ' + gameId + ': FLIP DETECTED — ' + s.source + ' has T:' + s.homeTickets + ' but avg is ' + avgT + '. Flipping.', 'err');
+            s.homeTickets = 100 - s.homeTickets;
+            s.homeMoney = 100 - s.homeMoney;
+          }
+        }
+
+        // Recalculate after flip corrections
+        sumT = 0; sumM = 0;
+        for (const s of validSources) { sumT += s.homeTickets; sumM += s.homeMoney; }
+        avgT = Math.round(sumT / validSources.length);
+        avgM = Math.round(sumM / validSources.length);
+
+        // Exclude remaining outliers (20+ pts from average)
+        const outliers = validSources.filter(s => Math.abs(s.homeTickets - avgT) > 20);
         if (outliers.length > 0 && outliers.length < validSources.length) {
-          for (const outlier of outliers) {
-            slog('Game ' + gameId + ': Excluding outlier source T:' + outlier.tickets + ' (avg was ' + avgTickets + ')', 'info');
+          for (const o of outliers) {
+            slog('Game ' + gameId + ': Excluding outlier ' + o.source + ' T:' + o.homeTickets + ' (avg ' + avgT + ')', 'info');
           }
-          validSources = validSources.filter(src => Math.abs(parseInt(src.tickets) - avgTickets) <= 20);
-
-          // Recalculate with non-outlier sources
-          sumTickets = 0;
-          sumMoney = 0;
-          for (const src of validSources) {
-            sumTickets += parseInt(src.tickets) || 0;
-            sumMoney += parseInt(src.money) || 0;
-          }
-          avgTickets = Math.round(sumTickets / validSources.length);
-          avgMoney = Math.round(sumMoney / validSources.length);
+          validSources = validSources.filter(s => Math.abs(s.homeTickets - avgT) <= 20);
         }
+        // Guard against empty array after exclusions
+        if (validSources.length === 0) {
+          slog('Game ' + gameId + ': All sources excluded — skipping', 'err');
+          continue;
+        }
+        sumT = 0; sumM = 0;
+        for (const s of validSources) { sumT += s.homeTickets; sumM += s.homeMoney; }
+        avgT = Math.round(sumT / validSources.length);
+        avgM = Math.round(sumM / validSources.length);
 
         const count = validSources.length;
-        // Determine confidence based on agreement among non-outlier sources
-        const ticketsVariance = Math.max(...validSources.map(s => Math.abs(parseInt(s.tickets) - avgTickets)));
-        const moneyVariance = Math.max(...validSources.map(s => Math.abs(parseInt(s.money) - avgMoney)));
+        const ticketsVar = Math.max(...validSources.map(s => Math.abs(s.homeTickets - avgT)));
+        const moneyVar = Math.max(...validSources.map(s => Math.abs(s.homeMoney - avgM)));
         let confidence = 'high';
-        if (ticketsVariance > 5 || moneyVariance > 5) confidence = 'medium';
-        if (ticketsVariance > 10 || moneyVariance > 10) confidence = 'low';
+        if (ticketsVar > 5 || moneyVar > 5) confidence = 'medium';
+        if (ticketsVar > 10 || moneyVar > 10) confidence = 'low';
+
+        // Sanity warning: log when sources still disagree significantly
+        if (ticketsVar > 15 || moneyVar > 15) {
+          slog('Game ' + gameId + ': WARNING — sources disagree (var T:' + ticketsVar + ' M:' + moneyVar + '). Check console for details.', 'err');
+          console.warn('[Splits] Disagreement for ' + gameId + ':', normalized.map(s => s.source + '→T:' + s.homeTickets + '/M:' + s.homeMoney));
+        }
+
         allResults[gameId] = {
-          tickets: String(avgTickets),
-          money: String(avgMoney),
-          side: validSources[0].side,
+          tickets: String(avgT),
+          money: String(avgM),
+          side: 'home',
           confidence: confidence,
           _sourceCount: count,
           source: validSources.map(s => s.source).join('+')
         };
-        slog('Game ' + gameId + ': Averaged ' + count + ' sources → T:' + avgTickets + '% M:' + avgMoney + '% (' + confidence + ')', 'info');
+        slog('Game ' + gameId + ': Averaged ' + count + ' sources → T:' + avgT + '% M:' + avgM + '% (' + confidence + ')', 'info');
       }
     }
 
@@ -1310,6 +1347,10 @@ function App() {
           const gd = next[gameId];
           // Don't auto-update splits for locked (live/final) games — only manual overwrite allowed
           if (gd._closingLocked && !overwrite) continue;
+          if (splits.side !== 'home' && splits.side !== 'away') {
+            console.log('[Splits] BLOCKED: game ' + gameId + ' has invalid side: ' + splits.side);
+            continue;
+          }
           if (overwrite || gd.tickets === '' || gd.tickets == null) {
             const finalT = splits.side === 'home' ? parseInt(splits.tickets) : 100 - parseInt(splits.tickets);
             const finalM = splits.side === 'home' ? parseInt(splits.money) : 100 - parseInt(splits.money);
