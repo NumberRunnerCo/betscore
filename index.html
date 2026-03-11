@@ -1758,7 +1758,12 @@ function App() {
       // Fetch betting splits data (non-blocking)
       fetchBettingSplits(matchedGames, false).then(splitsData => {
         if (Object.keys(splitsData).length > 0) {
-          applySplitsToGames(splitsData, false);
+          try {
+            applySplitsToGames(splitsData, false);
+          } catch(applyErr) {
+            console.error('[Splits] Error applying splits:', applyErr);
+            setSplitsStatus('error');
+          }
         }
       }).catch(e => { console.log('[Splits] Catch:', e); setSplitsStatus('error'); });
 
@@ -1942,7 +1947,9 @@ function App() {
             const hasSharp = (homeChecks.filter(Boolean).length === 3) || (awayChecks.filter(Boolean).length === 3);
             if (hasSharp) {
               const isHomeSharp = homeChecks.filter(Boolean).length === 3;
-              const sharpScore = isHomeSharp ? all.home.score : all.away.score;
+              const sharpSide = isHomeSharp ? all.home : all.away;
+              if (!sharpSide) continue;
+              const sharpScore = sharpSide.score;
               const homeScore = parseInt(g.homeScore) || 0;
               const awayScore = parseInt(g.awayScore) || 0;
               const margin = homeScore - awayScore;
