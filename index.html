@@ -1834,8 +1834,8 @@ function App() {
               || pm[homePro] || pm[awayPro] || pm[homeProShort] || pm[awayProShort]
               || pm['_raw_' + homePro] || pm['_raw_' + awayPro]
               || pm['_raw_' + homeProShort] || pm['_raw_' + awayProShort];
-            // Try last-word mascot match (validation below catches wrong-team assignments)
-            if (!entry) {
+            // Try last-word mascot match — pro sports only (college has too many shared mascots: Wildcats, Bulldogs, Tigers, etc.)
+            if (!entry && !isCollegeSport(sport)) {
               if (homeLast && homeLast.length >= 4) entry = pm['_last_' + homeLast];
               if (!entry && awayLast && awayLast.length >= 4) entry = pm['_last_' + awayLast];
             }
@@ -1874,7 +1874,7 @@ function App() {
               else {
                 // Neither config fully validated — use best-guess fallback if at least ONE team matched
                 const bestScore = Math.max(o1HomeScore, o1AwayScore, o2HomeScore, o2AwayScore);
-                if (bestScore >= 60) {
+                if (bestScore >= 70) {
                   // At least one strong match — assign using the strongest signal
                   if (o1HomeScore >= o2HomeScore) homeIdx = 0;
                   else homeIdx = 1;
