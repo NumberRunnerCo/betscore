@@ -3150,6 +3150,25 @@ function App() {
           <button onClick={() => { window.restoreFileInput?.click(); }} style={{display: 'block', width: '100%', padding: '10px 12px', background: 'var(--card-alt)', color: 'var(--text-dim)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s'}}>
             Restore Backup
           </button>
+          <button onClick={() => {
+            if (!confirm('Clear all saved data? This removes games, splits, scores, and bet history for ALL sports. Your API key will be kept. This cannot be undone.')) return;
+            const savedKey = apiKey;
+            const savedWorker = workerUrl;
+            const allKeys = Object.keys(localStorage).filter(k => k.startsWith('nick-'));
+            allKeys.forEach(k => localStorage.removeItem(k));
+            setGames([]);
+            setGameData({});
+            setSharpRecords({ wins: 0, losses: 0, pushes: 0, clvBeats: 0, clvMisses: 0, history: [] });
+            setRoiStats({ totalWagered: 0, totalReturn: 0, bets: 0 });
+            setHistory([]);
+            setBets({});
+            setPinnedGames([]);
+            if (savedKey) { save('apiKey', savedKey); setApiKey(savedKey); }
+            if (savedWorker) { save('workerUrl', savedWorker); setWorkerUrl(savedWorker); }
+            alert('All data cleared! Tap "Fetch Today\'s Games" to reload.');
+          }} style={{display: 'block', width: '100%', padding: '10px 12px', marginTop: '8px', background: 'rgba(255,69,58,0.12)', color: '#ff453a', border: '1px solid rgba(255,69,58,0.25)', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s'}}>
+            Clear All Data
+          </button>
         </div>
       </div>
 
