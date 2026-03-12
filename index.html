@@ -348,37 +348,31 @@ const SPORT_CONFIG = {
     polySlug: /cbb|ncaab|college.?basket/,
     splitsSources: [
       { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/ncaab/consensus-picks' },
-      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/college-basketball/public-betting-trends/' },
     ]},
   basketball_nba: { name: 'NBA', espn: 'basketball/nba', groups: null, market: 'spreads', mlPrimary: false,
     polySlug: /\bnba\b/,
     splitsSources: [
       { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/nba/consensus-picks' },
-      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/nba/public-betting-trends/' },
     ]},
   americanfootball_nfl: { name: 'NFL', espn: 'football/nfl', groups: null, market: 'spreads', mlPrimary: false,
     polySlug: /\bnfl\b/,
     splitsSources: [
       { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/nfl/consensus-picks' },
-      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/nfl/public-betting-trends/' },
     ]},
   americanfootball_ncaaf: { name: 'CFB', espn: 'football/college-football', groups: '80', market: 'spreads', mlPrimary: false,
     polySlug: /cfb|ncaaf|college.?foot/,
     splitsSources: [
       { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/ncaaf/consensus-picks' },
-      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/college-football/public-betting-trends/' },
     ]},
   baseball_mlb: { name: 'MLB', espn: 'baseball/mlb', groups: null, market: 'h2h', mlPrimary: true,
     polySlug: /\bmlb\b|baseball/,
     splitsSources: [
       { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/mlb/consensus-picks' },
-      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/mlb/public-betting-trends/' },
     ]},
   icehockey_nhl: { name: 'NHL', espn: 'hockey/nhl', groups: null, market: 'h2h', mlPrimary: true,
     polySlug: /\bnhl\b|hockey/,
     splitsSources: [
       { name: 'ScoresAndOdds', url: 'https://www.scoresandodds.com/nhl/consensus-picks' },
-      { name: 'SportsBetDime', url: 'https://www.sportsbettingdime.com/nhl/public-betting-trends/' },
     ]},
 };
 
@@ -878,29 +872,52 @@ function App() {
     const foundForGame = new Set(); // track game IDs we already matched
 
 
-    // Strategy 0: ScoresAndOdds-style "% OF BETS" block layout
-    // Pattern: [Away] [Date] [Home] [ABBR(+spread)] [% OF BETS] [ABBR(-spread)] [awayBets%] [homeBets%] [awayMoney%] [homeMoney%] [% OF MONEY]
+    // Strategy 0: ScoresAndOdds-style — find blocks of 4 percentages near spread indicators
+    // The page has MONEYLINE, SPREAD, and TOTAL sections. We only want SPREAD data.
+    // SPREAD sections contain "+N" or "-N" spread numbers. MONEYLINE sections have extreme splits (90%+).
+    // Handles both clean per-line format AND compressed div-extracted format (all 4 nums on one line).
     for (let i = 0; i < lines.length; i++) {
-      if (!/^%\s*of\s*bets$/i.test(lines[i])) continue;
-      // Collect up to 4 percentage numbers from lines after "% OF BETS" (skip non-number lines like abbreviations)
-      const pcts = [];
-      for (let j = i + 1; j < Math.min(i + 7, lines.length) && pcts.length < 4; j++) {
-        const m = lines[j].match(/^(\d{1,3})\s*%?\s*$/);
-        if (m) { const n = parseInt(m[1]); if (n >= 5 && n <= 95) pcts.push(n); }
+      // Look for lines containing "% of bets" (not necessarily standalone)
+      if (!/% of bets/i.test(lines[i])) continue;
+      // Check: is there a spread indicator (+/-N.5 or +/-N) within 3 lines before this?
+      let hasSpread = false;
+      for (let j = Math.max(0, i - 3); j <= i; j++) {
+        if (/\([+-]\d+\.?\d*\)/.test(lines[j])) { hasSpread = true; break; }
       }
-      if (pcts.length < 4) continue;
-      // Validate: first pair and second pair should each sum to ~100
-      if (Math.abs((pcts[0] + pcts[1]) - 100) > 5 || Math.abs((pcts[2] + pcts[3]) - 100) > 5) continue;
-      // Look backwards for team names (up to 8 lines)
-      let awayMatch = null, homeMatch = null;
-      for (let j = i - 1; j >= Math.max(0, i - 8); j--) {
-        const tm = findTeam(lines[j]);
-        if (tm) {
-          if (!homeMatch) homeMatch = tm; // closest match = home
-          else if (!awayMatch && tm.game.id === homeMatch.game.id) { awayMatch = tm; break; } // second match = away (same game)
+      if (!hasSpread) continue; // Skip moneyline section (no spread numbers nearby)
+      // Collect percentage numbers from this line AND the next few lines
+      const pcts = [];
+      for (let j = i; j < Math.min(i + 8, lines.length) && pcts.length < 4; j++) {
+        // Extract all percentage-like numbers from each line
+        const numMatches = lines[j].match(/\b(\d{1,2})%/g);
+        if (numMatches) {
+          for (const nm of numMatches) {
+            const n = parseInt(nm);
+            if (n >= 5 && n <= 95 && pcts.length < 4) pcts.push(n);
+          }
+        }
+        // Also check for standalone numbers on their own line
+        if (!numMatches) {
+          const standalone = lines[j].match(/^(\d{1,3})\s*%?\s*$/);
+          if (standalone) {
+            const n = parseInt(standalone[1]);
+            if (n >= 5 && n <= 95 && pcts.length < 4) pcts.push(n);
+          }
         }
       }
-      // Use whichever team we found — store from HOME side perspective
+      if (pcts.length < 4) continue;
+      // Validate: pairs sum to ~100
+      if (Math.abs((pcts[0] + pcts[1]) - 100) > 5 || Math.abs((pcts[2] + pcts[3]) - 100) > 5) continue;
+      // Look backwards for team names (up to 10 lines)
+      let awayMatch = null, homeMatch = null;
+      for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
+        const cleaned = lines[j].replace(/\([^)]*\)/g, '').trim(); // strip (spread) from abbreviation lines
+        const tm = findTeam(cleaned);
+        if (tm) {
+          if (!homeMatch) homeMatch = tm;
+          else if (!awayMatch && tm.game.id === homeMatch.game.id) { awayMatch = tm; break; }
+        }
+      }
       const tm = homeMatch || awayMatch;
       if (tm && !foundForGame.has(tm.game.id)) {
         // pcts = [awayBets, homeBets, awayMoney, homeMoney]
@@ -909,7 +926,7 @@ function App() {
         if (v.valid) {
           results[tm.game.id] = { tickets: homeBets, money: homeMoney, side: 'home', source: 'parsed', confidence: v.confidence };
           foundForGame.add(tm.game.id);
-          log('Match (% OF BETS block): ' + tm.game.homeName + ' vs ' + tm.game.awayName + ' homeT:' + homeBets + ' homeM:' + homeMoney + ' [' + v.confidence + ']');
+          log('Match (S0 spread-block): ' + tm.game.homeName + ' vs ' + tm.game.awayName + ' homeT:' + homeBets + ' homeM:' + homeMoney + ' [' + v.confidence + '] raw:[' + pcts.join(',') + ']');
         }
       }
     }
