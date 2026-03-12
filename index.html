@@ -878,6 +878,43 @@ function App() {
     const foundForGame = new Set(); // track game IDs we already matched
 
 
+    // Strategy 0: ScoresAndOdds-style "% OF BETS" block layout
+    // Pattern: [Away] [Date] [Home] [ABBR(+spread)] [% OF BETS] [ABBR(-spread)] [awayBets%] [homeBets%] [awayMoney%] [homeMoney%] [% OF MONEY]
+    for (let i = 0; i < lines.length; i++) {
+      if (!/^%\s*of\s*bets$/i.test(lines[i])) continue;
+      // Collect up to 4 percentage numbers from lines after "% OF BETS" (skip non-number lines like abbreviations)
+      const pcts = [];
+      for (let j = i + 1; j < Math.min(i + 7, lines.length) && pcts.length < 4; j++) {
+        const m = lines[j].match(/^(\d{1,3})\s*%?\s*$/);
+        if (m) { const n = parseInt(m[1]); if (n >= 5 && n <= 95) pcts.push(n); }
+      }
+      if (pcts.length < 4) continue;
+      // Validate: first pair and second pair should each sum to ~100
+      if (Math.abs((pcts[0] + pcts[1]) - 100) > 5 || Math.abs((pcts[2] + pcts[3]) - 100) > 5) continue;
+      // Look backwards for team names (up to 8 lines)
+      let awayMatch = null, homeMatch = null;
+      for (let j = i - 1; j >= Math.max(0, i - 8); j--) {
+        const tm = findTeam(lines[j]);
+        if (tm) {
+          if (!homeMatch) homeMatch = tm; // closest match = home
+          else if (!awayMatch && tm.game.id === homeMatch.game.id) { awayMatch = tm; break; } // second match = away (same game)
+        }
+      }
+      // Use whichever team we found — store from HOME side perspective
+      const tm = homeMatch || awayMatch;
+      if (tm && !foundForGame.has(tm.game.id)) {
+        // pcts = [awayBets, homeBets, awayMoney, homeMoney]
+        const homeBets = pcts[1], homeMoney = pcts[3];
+        const v = validateSplits(homeBets, homeMoney);
+        if (v.valid) {
+          results[tm.game.id] = { tickets: homeBets, money: homeMoney, side: 'home', source: 'parsed', confidence: v.confidence };
+          foundForGame.add(tm.game.id);
+          log('Match (% OF BETS block): ' + tm.game.homeName + ' vs ' + tm.game.awayName + ' homeT:' + homeBets + ' homeM:' + homeMoney + ' [' + v.confidence + ']');
+        }
+      }
+    }
+
+
     // Strategy 1: Lines with team name + 2+ numbers (most common format)
     // Handles: "Duke 55 62", "Duke 55% 62%", "Duke  55  62  -3.5", "Duke | 55 | 62"
     for (let i = 0; i < lines.length; i++) {
