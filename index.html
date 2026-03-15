@@ -328,7 +328,7 @@ const save = (k, v) => { const key='nick-'+k; const val=JSON.stringify(v); memSt
 const load = (k, def) => { const key='nick-'+k; try{const v=storageWorks?localStorage.getItem(key):memStore[key]; return v?JSON.parse(v):def;}catch(e){return def;} };
 
 
-const BOOK_ABBR = { fanduel:'FD', draftkings:'DK', betmgm:'MGM', caesars:'CZR', pointsbet:'PB', betrivers:'BR', unibet:'UNI', wynn:'WYNN', bet365:'365' };
+const BOOK_ABBR = { fanduel:'FD', draftkings:'DK', betmgm:'MGM', caesars:'CZR', pointsbet:'PB', betrivers:'BR', unibet:'UNI', wynn:'WYNN', bet365:'365', circasports:'CIR', hardrockbet:'HR', espnbet:'ESPN' };
 const bookName = (key) => BOOK_ABBR[key] || key.toUpperCase().slice(0,3);
 
 
@@ -1555,7 +1555,7 @@ function App() {
             oddsData = cached.data;
             setStatus(gamesList.length + ' games. Using cached lines (' + Math.round((Date.now() - cached.timestamp) / 1000) + 's old)');
           } else {
-            const oddsUrl = 'https://api.the-odds-api.com/v4/sports/' + sportKey + '/odds/?apiKey=' + apiKey + '&regions=us&markets=' + markets + '&oddsFormat=american&bookmakers=fanduel,draftkings,betmgm,caesars';
+            const oddsUrl = 'https://api.the-odds-api.com/v4/sports/' + sportKey + '/odds/?apiKey=' + apiKey + '&regions=us&markets=' + markets + '&oddsFormat=american&bookmakers=fanduel,draftkings,betmgm,caesars,circasports,hardrockbet,espnbet';
             // Call Odds API directly (it supports CORS) — don't use proxy chain or headers get stripped
             let oddsRes;
             try {
