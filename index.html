@@ -872,19 +872,23 @@ function App() {
     const foundForGame = new Set(); // track game IDs we already matched
 
 
-    // Strategy 0: ScoresAndOdds-style — find blocks of 4 percentages near spread indicators
-    // The page has MONEYLINE, SPREAD, and TOTAL sections. We only want SPREAD data.
-    // SPREAD sections contain "+N" or "-N" spread numbers. MONEYLINE sections have extreme splits (90%+).
+    // Strategy 0: ScoresAndOdds-style — find blocks of 4 percentages near "% of bets" labels
+    // For SPREAD sports (CBB, NBA, NFL, CFB): page has MONEYLINE + SPREAD + TOTAL sections.
+    //   We require a spread indicator (+N.5 or -N) nearby to only grab SPREAD data.
+    // For ML sports (NHL, MLB): page only has MONEYLINE data (no spread indicators exist).
+    //   We skip the spread check and grab all "% of bets" sections.
     // Handles both clean per-line format AND compressed div-extracted format (all 4 nums on one line).
     for (let i = 0; i < lines.length; i++) {
       // Look for lines containing "% of bets" (not necessarily standalone)
       if (!/% of bets/i.test(lines[i])) continue;
-      // Check: is there a spread indicator (+/-N.5 or +/-N) within 3 lines before this?
-      let hasSpread = false;
-      for (let j = Math.max(0, i - 3); j <= i; j++) {
-        if (/\([+-]\d+\.?\d*\)/.test(lines[j])) { hasSpread = true; break; }
+      // For spread sports: require a spread indicator nearby to filter out moneyline sections
+      if (!mlPrimary) {
+        let hasSpread = false;
+        for (let j = Math.max(0, i - 3); j <= i; j++) {
+          if (/\([+-]\d+\.?\d*\)/.test(lines[j])) { hasSpread = true; break; }
+        }
+        if (!hasSpread) continue; // Skip moneyline section (no spread numbers nearby)
       }
-      if (!hasSpread) continue; // Skip moneyline section (no spread numbers nearby)
       // Collect percentage numbers from this line AND the next few lines
       const pcts = [];
       for (let j = i; j < Math.min(i + 8, lines.length) && pcts.length < 4; j++) {
@@ -926,7 +930,7 @@ function App() {
         if (v.valid) {
           results[tm.game.id] = { tickets: homeBets, money: homeMoney, side: 'home', source: 'parsed', confidence: v.confidence };
           foundForGame.add(tm.game.id);
-          log('Match (S0 spread-block): ' + tm.game.homeName + ' vs ' + tm.game.awayName + ' homeT:' + homeBets + ' homeM:' + homeMoney + ' [' + v.confidence + '] raw:[' + pcts.join(',') + ']');
+          log('Match (S0 ' + (mlPrimary ? 'ML' : 'spread') + '): ' + tm.game.homeName + ' vs ' + tm.game.awayName + ' homeT:' + homeBets + ' homeM:' + homeMoney + ' [' + v.confidence + '] raw:[' + pcts.join(',') + ']');
         }
       }
     }
@@ -1117,7 +1121,7 @@ function App() {
 
 
   // ── Parse HTML page for splits data ──
-  const parseHtmlForSplits = (html, gamesList, slog) => {
+  const parseHtmlForSplits = (html, gamesList, slog, mlPrimary) => {
     try {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       slog('Page: ' + (doc.title || '(no title)'), 'info');
@@ -1250,7 +1254,7 @@ function App() {
         setSplitsSourceStatus({...srcStatus});
 
 
-        const data = parseHtmlForSplits(html, gamesList, slog);
+        const data = parseHtmlForSplits(html, gamesList, slog, SPORT_CONFIG[sport]?.mlPrimary);
         const count = Object.keys(data).length;
 
 
@@ -1651,14 +1655,25 @@ function App() {
       }
 
 
+      // Normalize team names that differ between ESPN and the Odds API
+      const TEAM_ALIASES = {
+        'la clippers': 'los angeles clippers',
+        'athletics': 'sacramento athletics',
+        'utah hockey club': 'utah mammoth',
+      };
+      const applyAlias = (name) => {
+        const n = name.toLowerCase().trim();
+        return TEAM_ALIASES[n] || n;
+      };
+
       const matchedGames = gamesList.map(g => {
         let spread = null, total = null, books = [];
         const homeNorm = normalize(g.homeFullName, sport);
-        const homePro = normalizePro(g.homeFullName);
+        const homePro = applyAlias(normalizePro(g.homeFullName));
         let bestMatch = null, bestScore = 0;
         for (const [key, val] of Object.entries(oddsMap)) {
           const keyNorm = normalize(key, sport);
-          const keyPro = normalizePro(key);
+          const keyPro = applyAlias(normalizePro(key));
           if (keyNorm === homeNorm || keyPro === homePro) { bestMatch = val; bestScore = 100; break; }
           if (keyNorm.includes(homeNorm) || homeNorm.includes(keyNorm) || keyPro.includes(homePro) || homePro.includes(keyPro)) {
             const score = Math.min(keyNorm.length, homeNorm.length);
