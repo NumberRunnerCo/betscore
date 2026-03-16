@@ -760,7 +760,7 @@ function App() {
 
 
   // ── Parse pasted/scraped splits text into game data ──
-  const parseSplitsText = (text, gamesList) => {
+  const parseSplitsText = (text, gamesList, mlPrimary) => {
     const log = (msg) => console.log('[Splits] ' + msg);
     if (!text || text.length < 10) return {};
     log('Parsing text (' + text.length + ' chars). First 500: ' + text.substring(0, 500));
@@ -873,22 +873,20 @@ function App() {
 
 
     // Strategy 0: ScoresAndOdds-style — find blocks of 4 percentages near "% of bets" labels
-    // For SPREAD sports (CBB, NBA, NFL, CFB): page has MONEYLINE + SPREAD + TOTAL sections.
-    //   We require a spread indicator (+N.5 or -N) nearby to only grab SPREAD data.
-    // For ML sports (NHL, MLB): page only has MONEYLINE data (no spread indicators exist).
-    //   We skip the spread check and grab all "% of bets" sections.
+    // ScoresAndOdds pages have MONEYLINE + SPREAD/PUCKLINE + TOTAL sections all in the HTML.
+    // For SPREAD sports (CBB, NBA, NFL, CFB): REQUIRE a spread indicator nearby to only grab SPREAD data.
+    // For ML sports (NHL, MLB): REJECT sections WITH spread/puckline indicators — grab only MONEYLINE data.
     // Handles both clean per-line format AND compressed div-extracted format (all 4 nums on one line).
     for (let i = 0; i < lines.length; i++) {
       // Look for lines containing "% of bets" (not necessarily standalone)
       if (!/% of bets/i.test(lines[i])) continue;
-      // For spread sports: require a spread indicator nearby to filter out moneyline sections
-      if (!mlPrimary) {
-        let hasSpread = false;
-        for (let j = Math.max(0, i - 3); j <= i; j++) {
-          if (/\([+-]\d+\.?\d*\)/.test(lines[j])) { hasSpread = true; break; }
-        }
-        if (!hasSpread) continue; // Skip moneyline section (no spread numbers nearby)
+      // Check if there's a spread/puckline indicator nearby
+      let hasSpread = false;
+      for (let j = Math.max(0, i - 3); j <= i; j++) {
+        if (/\([+-]\d+\.?\d*\)/.test(lines[j])) { hasSpread = true; break; }
       }
+      if (mlPrimary && hasSpread) continue; // ML sport: skip puckline/spread section
+      if (!mlPrimary && !hasSpread) continue; // Spread sport: skip moneyline section
       // Collect percentage numbers from this line AND the next few lines
       const pcts = [];
       for (let j = i; j < Math.min(i + 8, lines.length) && pcts.length < 4; j++) {
@@ -1156,7 +1154,7 @@ function App() {
               const arrs = search(j, 0);
               for (const arr of arrs) {
                 const txt = arr.map(item => Object.values(item).filter(v => typeof v === 'string' || typeof v === 'number').join('\t')).join('\n');
-                const r = parseSplitsText(txt, gamesList);
+                const r = parseSplitsText(txt, gamesList, mlPrimary);
                 if (Object.keys(r).length > 0) return r;
               }
             } catch(e) {}
@@ -1186,7 +1184,7 @@ function App() {
             tableText += cells.join('\t') + '\n';
           }
         });
-        const r = parseSplitsText(tableText, gamesList);
+        const r = parseSplitsText(tableText, gamesList, mlPrimary);
         if (Object.keys(r).length > 0) return r;
       }
 
@@ -1197,7 +1195,7 @@ function App() {
         slog(divs.length + ' matchup elements', 'info');
         let divText = '';
         divs.forEach(d => { divText += (d.innerText || d.textContent || '').trim() + '\n'; });
-        const r = parseSplitsText(divText, gamesList);
+        const r = parseSplitsText(divText, gamesList, mlPrimary);
         if (Object.keys(r).length > 0) return r;
       }
 
@@ -1205,7 +1203,7 @@ function App() {
       // 4. Full body text
       const bodyText = doc.body ? (doc.body.innerText || doc.body.textContent || '') : '';
       slog('Body: ' + bodyText.length + ' chars', 'info');
-      if (bodyText.length > 50) return parseSplitsText(bodyText, gamesList);
+      if (bodyText.length > 50) return parseSplitsText(bodyText, gamesList, mlPrimary);
     } catch(e) { slog('Parse error: ' + e.message, 'err'); }
     return {};
   };
@@ -1452,7 +1450,7 @@ function App() {
     if (!pasteText.trim()) return;
     const slog = (msg, type) => { addSplitsLog(msg, type); console.log('[Splits:Paste] ' + msg); };
     slog('Parsing pasted text (' + pasteText.length + ' chars)', 'info');
-    const results = parseSplitsText(pasteText, games);
+    const results = parseSplitsText(pasteText, games, SPORT_CONFIG[sport]?.mlPrimary);
     const count = Object.keys(results).length;
     if (count > 0) {
       for (const id of Object.keys(results)) results[id].source = 'paste';
