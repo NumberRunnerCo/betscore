@@ -907,10 +907,8 @@ function App() {
           }
         }
       }
-      if (pcts.length < 4) continue;
-      // Validate: pairs sum to ~100
-      if (Math.abs((pcts[0] + pcts[1]) - 100) > 5 || Math.abs((pcts[2] + pcts[3]) - 100) > 5) continue;
-      // Look backwards for team names (up to 10 lines)
+      // Look backwards for team names (up to 10 lines) — do this BEFORE validating pcts
+      // so we can block Strategy 2 from grabbing garbage even if S0 can't parse the data
       let awayMatch = null, homeMatch = null;
       for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
         const cleaned = lines[j].replace(/\([^)]*\)/g, '').trim(); // strip (spread) from abbreviation lines
@@ -921,7 +919,20 @@ function App() {
         }
       }
       const tm = homeMatch || awayMatch;
+      // Block this game from later strategies even if we can't parse valid data
+      // This prevents Strategy 2 from grabbing puckline/total garbage for games where
+      // we found a "% of bets" section but the data was incomplete (e.g., live games)
       if (tm && !foundForGame.has(tm.game.id)) {
+        if (pcts.length < 4) {
+          foundForGame.add(tm.game.id); // block later strategies
+          log('S0 blocked (incomplete data, ' + pcts.length + ' pcts): ' + (tm.game.homeName || '?') + ' raw:[' + pcts.join(',') + ']');
+          continue;
+        }
+        if (Math.abs((pcts[0] + pcts[1]) - 100) > 5 || Math.abs((pcts[2] + pcts[3]) - 100) > 5) {
+          foundForGame.add(tm.game.id); // block later strategies
+          log('S0 blocked (bad sums): ' + (tm.game.homeName || '?') + ' raw:[' + pcts.join(',') + '] sums:' + (pcts[0]+pcts[1]) + '/' + (pcts[2]+pcts[3]));
+          continue;
+        }
         // pcts = [awayBets, homeBets, awayMoney, homeMoney]
         const homeBets = pcts[1], homeMoney = pcts[3];
         const v = validateSplits(homeBets, homeMoney);
