@@ -2827,7 +2827,7 @@ function App() {
             <div className="inputs-grid" style={{marginBottom:'8px', gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
               <div className="input-group">
                 <label>Open</label>
-                <input type="text" inputMode="decimal" step="0.5" pattern="-?[0-9]*\.?[0-9]*" className="locked" placeholder="--"
+                <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*" className="locked" placeholder="--"
                   value={gd.homeOpenLine != null ? gd.homeOpenLine : ''} onChange={e => updateGameData(game.id, 'homeOpenLine', e.target.value)} />
               </div>
               {gd._closingLocked && (
@@ -2839,7 +2839,7 @@ function App() {
               )}
               <div className="input-group">
                 <label>{gd._closingLocked ? 'Live' : 'Current'}</label>
-                <input type="text" inputMode="decimal" pattern="-?[0-9]*\.?[0-9]*" className="current-spread" placeholder="--" style={gd._closingLocked ? {color:'var(--text-dim)', fontSize:'12px'} : {}}
+                <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*" className="current-spread" placeholder="--" style={gd._closingLocked ? {color:'var(--text-dim)', fontSize:'12px'} : {}}
                   value={gd.homeCurrentLine != null ? gd.homeCurrentLine : ''} onChange={e => updateGameData(game.id, 'homeCurrentLine', e.target.value)} />
               </div>
             </div>
@@ -2847,7 +2847,7 @@ function App() {
             <div className="inputs-grid" style={{marginBottom:'8px', gridTemplateColumns: gd._closingLocked ? '1fr 1fr 1fr' : '1fr 1fr'}}>
               <div className="input-group">
                 <label>Open</label>
-                <input type="text" inputMode="decimal" pattern="-?[0-9]*\.?[0-9]*" className="locked" placeholder="--"
+                <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*" className="locked" placeholder="--"
                   value={gd.awayOpenLine != null ? gd.awayOpenLine : ''} onChange={e => updateGameData(game.id, 'awayOpenLine', e.target.value)} />
               </div>
               {gd._closingLocked && (
@@ -2859,7 +2859,7 @@ function App() {
               )}
               <div className="input-group">
                 <label>{gd._closingLocked ? 'Live' : 'Current'}</label>
-                <input type="text" inputMode="decimal" pattern="-?[0-9]*\.?[0-9]*" className="current-spread" placeholder="--" style={gd._closingLocked ? {color:'var(--text-dim)', fontSize:'12px'} : {}}
+                <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*" className="current-spread" placeholder="--" style={gd._closingLocked ? {color:'var(--text-dim)', fontSize:'12px'} : {}}
                   value={gd.awayCurrentLine != null ? gd.awayCurrentLine : ''} onChange={e => updateGameData(game.id, 'awayCurrentLine', e.target.value)} />
               </div>
             </div>
