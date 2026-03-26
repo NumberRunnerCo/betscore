@@ -1434,7 +1434,7 @@ function App() {
               // Calculate RLM: line moved toward team but public money is opposite
               let homeLineMove;
               if (gd.isMlPrimary && gd.openHomeProb != null && gd.homeProb != null) {
-                homeLineMove = probToSpreadEquiv(gd.homeProb - gd.openHomeProb);
+                homeLineMove = (gd.homeProb - gd.openHomeProb) * 100; // probability delta as pct points
               } else {
                 homeLineMove = (parseFloat(gd.homeOpenLine) || 0) - (parseFloat(gd.homeCurrentLine) || 0);
               }
@@ -2079,13 +2079,15 @@ function App() {
 
 
   // ── BetScore calc for one side (takes pre-computed lineMove) ──
-  const calcSide = (tickets, money, lineMove) => {
+  // Spread sports: lineMove × 10  |  ML sports (NHL/MLB): lineMove × 4.12
+  const calcSide = (tickets, money, lineMove, mlPrimary) => {
     if (tickets === '' || money === '' || tickets == null || money == null) return null;
     const t = parseFloat(tickets) || 0;
     const m = parseFloat(money) || 0;
     const lm = (lineMove != null && !isNaN(lineMove)) ? lineMove : 0;
     const diff = m - t;
-    const score = Math.round(diff + (lm * 10) + (100 - m));
+    const mlMultiplier = mlPrimary ? 4.12 : 10;
+    const score = Math.round(diff + (lm * mlMultiplier) + (100 - m));
     return { score, lineMove: lm, diff };
   };
 
@@ -2103,8 +2105,9 @@ function App() {
       const awayClosingProb = gd._closingLocked ? (gd.closingAwayProb != null ? gd.closingAwayProb : gd.awayProb) : gd.awayProb;
       const homeProbDelta = (homeClosingProb || 0) - (gd.openHomeProb || 0);
       const awayProbDelta = (awayClosingProb || 0) - (gd.openAwayProb || 0);
-      homeMove = probToSpreadEquiv(homeProbDelta);
-      awayMove = probToSpreadEquiv(awayProbDelta);
+      // Pass probability delta as percentage points (e.g. 0.029 → 2.9) for Nick's ×4.12 formula
+      homeMove = homeProbDelta * 100;
+      awayMove = awayProbDelta * 100;
     } else {
       // Spread sports: lineMove = open - effective (use closing line if locked, otherwise current)
       const homeEffective = gd._closingLocked ? (gd.homeClosingLine != null ? gd.homeClosingLine : gd.homeCurrentLine) : gd.homeCurrentLine;
@@ -2113,17 +2116,18 @@ function App() {
       awayMove = (parseFloat(gd.awayOpenLine) || 0) - (parseFloat(awayEffective) || 0);
     }
 
-    const home = calcSide(gd.tickets, gd.money, homeMove);
+    const isMl = !!gd.isMlPrimary;
+    const home = calcSide(gd.tickets, gd.money, homeMove, isMl);
     const awayTickets = gd.tickets !== '' ? String(100 - (parseFloat(gd.tickets)||0)) : '';
     const awayMoney = gd.money !== '' ? String(100 - (parseFloat(gd.money)||0)) : '';
-    const away = calcSide(awayTickets, awayMoney, awayMove);
+    const away = calcSide(awayTickets, awayMoney, awayMove, isMl);
     // Totals: lineMove = effective - open (going up = good for over, use closing line if locked)
     const totalEffective = gd._closingLocked ? (gd.closingTotal != null ? gd.closingTotal : gd.currentTotal) : gd.currentTotal;
     const overMove = (parseFloat(totalEffective) || 0) - (parseFloat(gd.openTotal) || 0);
-    const over = calcSide(gd.totalTickets, gd.totalMoney, overMove);
+    const over = calcSide(gd.totalTickets, gd.totalMoney, overMove, false);
     const underTickets = gd.totalTickets !== '' && gd.totalTickets != null ? String(100 - (parseFloat(gd.totalTickets)||0)) : '';
     const underMoney = gd.totalMoney !== '' && gd.totalMoney != null ? String(100 - (parseFloat(gd.totalMoney)||0)) : '';
-    const under = calcSide(underTickets, underMoney, -overMove);
+    const under = calcSide(underTickets, underMoney, -overMove, false);
     return { home, away, over, under };
   };
 
