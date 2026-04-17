@@ -2925,25 +2925,23 @@ function App() {
                   </>
                 ) : (
                   <>
-                  {openBestHome && (
+                  {(gd.homeOpenLine != null && gd.homeOpenLine !== '') ? (
                     <div className="best-line-row">
                       <span className="best-line-side">{game.homeName}</span>
                       <span className="best-line-info">
-                        {openBestHome.spread > 0 ? '+' : ''}{openBestHome.spread} ({openBestHome.juice > 0 ? '+' : ''}{openBestHome.juice})
-                        <span className="best-book" style={{background:'rgba(255,159,10,0.15)',color:'var(--gold)',border:'1px solid rgba(255,159,10,0.3)'}}>{openBestHome.book}</span>
+                        {parseFloat(gd.homeOpenLine) > 0 ? '+' : ''}{gd.homeOpenLine}
                       </span>
                     </div>
-                  )}
-                  {openBestAway && (
+                  ) : null}
+                  {(gd.awayOpenLine != null && gd.awayOpenLine !== '') ? (
                     <div className="best-line-row">
                       <span className="best-line-side">{game.awayName}</span>
                       <span className="best-line-info">
-                        {openBestAway.spread > 0 ? '+' : ''}{openBestAway.spread} ({openBestAway.juice > 0 ? '+' : ''}{openBestAway.juice})
-                        <span className="best-book" style={{background:'rgba(255,159,10,0.15)',color:'var(--gold)',border:'1px solid rgba(255,159,10,0.3)'}}>{openBestAway.book}</span>
+                        {parseFloat(gd.awayOpenLine) > 0 ? '+' : ''}{gd.awayOpenLine}
                       </span>
                     </div>
-                  )}
-                  {!openBestHome && !openBestAway && <div style={{fontSize:'11px',color:'var(--text-muted)',padding:'4px 0'}}>No qualifying lines</div>}
+                  ) : null}
+                  {(gd.homeOpenLine == null || gd.homeOpenLine === '') && (gd.awayOpenLine == null || gd.awayOpenLine === '') && <div style={{fontSize:'11px',color:'var(--text-muted)',padding:'4px 0'}}>No opening lines</div>}
                   </>
                 )}
               </div>
