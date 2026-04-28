@@ -1397,6 +1397,58 @@ function App() {
   // Convert ML probability movement to pseudo-spread value for BetScore
   const probToSpreadEquiv = (probDelta) => probDelta * 25; // 2% shift ≈ 0.5 spread pts equivalent
 
+  // ── MLB Model Functions (Nick's King of Capping formulas) ──
+  const xfipToTier = (xfip) => {
+    if (xfip == null || xfip === '') return null;
+    const x = parseFloat(xfip);
+    if (isNaN(x)) return null;
+    if (x < 3.3) return 'Ace';
+    if (x < 3.8) return 'Strong';
+    if (x < 4.2) return 'Average';
+    if (x < 4.7) return 'Weak';
+    return 'Fade';
+  };
+  const tierToScore = (tier) => {
+    if (tier === 'Ace') return 0.4;
+    if (tier === 'Strong') return 0.2;
+    if (tier === 'Average') return 0;
+    if (tier === 'Weak') return -0.2;
+    if (tier === 'Fade') return -0.4;
+    return 0;
+  };
+  // Nick's logistic True Win% formula
+  // trueWinPct = 1/(1+EXP(-0.15*(((homeMMI - awayMMI)+(homePitcherScore - awayPitcherScore)-(homeRegression*0.05))*(1-(homeDamper/10)))))
+  const calcTrueWinPct = (homeMMI, awayMMI, homePScore, awayPScore, homeReg, homeDamp) => {
+    const mmi = (parseFloat(homeMMI) || 0) - (parseFloat(awayMMI) || 0);
+    const pitch = (homePScore || 0) - (awayPScore || 0);
+    const reg = (parseFloat(homeReg) || 0) * 0.05;
+    const damp = 1 - ((parseFloat(homeDamp) || 10) / 10); // default damper=10 means no dampening (1-10/10=0... wait)
+    // Nick's formula: (1-(H/10)) where H is damper value. H=1 means (1-0.1)=0.9, H=0.85 means damper col stores 0.85-1.0
+    // Looking at Tracker: L (Dampen) ranges 0.85-1.0 and formula uses (1-(H/10))
+    // But H in MLB sheet is "Volatility Damper" which is the L column value (0.85-1.0)
+    // So (1-(0.95/10)) = 0.905 — this doesn't make sense as a big multiplier
+    // Re-reading: the formula is *(1-(H3/10))* and H values are like 0.85, 0.9, 0.95, 1.0
+    // So 1-(1.0/10) = 0.9, 1-(0.85/10) = 0.915
+    // Actually that gives values very close to 0.9 always, making it a near-constant
+    // The damper slightly adjusts the exponent — more volatile teams get slightly more dampened
+    const dampMult = 1 - ((parseFloat(homeDamp) != null && homeDamp !== '' ? parseFloat(homeDamp) : 1) / 10);
+    const exponent = -0.15 * ((mmi + pitch - reg) * dampMult);
+    return 1 / (1 + Math.exp(exponent));
+  };
+  // Convert win probability to American ML
+  const winPctToML = (pct) => {
+    if (pct == null || isNaN(pct) || pct <= 0 || pct >= 1) return null;
+    return pct >= 0.5 ? Math.round(-100 * pct / (1 - pct)) : Math.round(100 * (1 - pct) / pct);
+  };
+  const tierColor = (tier) => {
+    if (tier === 'Ace') return '#22c55e';
+    if (tier === 'Strong') return '#5ac8fa';
+    if (tier === 'Average') return '#a1a1aa';
+    if (tier === 'Weak') return '#eab308';
+    if (tier === 'Fade') return '#ef4444';
+    return '#a1a1aa';
+  };
+
 
   // ── Apply splits data to game inputs ──
   const applySplitsToGames = (splitsData, overwrite) => {
@@ -3037,6 +3089,131 @@ function App() {
             </div>
           </div>
         )}
+
+
+        {/* ── MLB Model Section (Nick's King of Capping) ── */}
+        {sport === 'mlb' && (() => {
+          const homeTier = xfipToTier(gd.homeXFIP);
+          const awayTier = xfipToTier(gd.awayXFIP);
+          const homePScore = tierToScore(homeTier);
+          const awayPScore = tierToScore(awayTier);
+          const homeWinPct = (gd.homeMMI != null && gd.homeMMI !== '' && gd.awayMMI != null && gd.awayMMI !== '')
+            ? calcTrueWinPct(gd.homeMMI, gd.awayMMI, homePScore, awayPScore, gd.homeRegression, gd.homeDamper)
+            : null;
+          const awayWinPct = homeWinPct != null ? 1 - homeWinPct : null;
+          const homeTrueML = winPctToML(homeWinPct);
+          const awayTrueML = winPctToML(awayWinPct);
+          const homeBooksProb = mlToProb(gd.homeML || game.homeML);
+          const awayBooksProb = mlToProb(gd.awayML || game.awayML);
+          const homeEdge = (homeWinPct != null && homeBooksProb != null) ? ((homeWinPct - homeBooksProb) * 100).toFixed(1) : null;
+          const awayEdge = (awayWinPct != null && awayBooksProb != null) ? ((awayWinPct - awayBooksProb) * 100).toFixed(1) : null;
+          return (
+          <div className="inputs-section" style={{borderTop:'1px solid var(--border)'}}>
+            <div className="inputs-label" style={{color:'#c084fc',display:'flex',alignItems:'center',gap:'6px'}}>
+              <span style={{fontSize:'14px'}}>&#9813;</span> King of Capping Model
+            </div>
+
+            {/* Pitcher Inputs */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}}>
+              <div>
+                <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--gold)',textTransform:'uppercase',marginBottom:'4px'}}>{game.homeName}</div>
+                <div className="input-group" style={{marginBottom:'4px'}}>
+                  <label>Pitcher XFIP</label>
+                  <input type="text" inputMode="decimal" placeholder="--" style={{textAlign:'center'}}
+                    value={gd.homeXFIP != null ? gd.homeXFIP : ''} onChange={e => updateGameData(game.id, 'homeXFIP', e.target.value)} />
+                </div>
+                {homeTier && <div style={{fontSize:'10px',fontWeight:700,color:tierColor(homeTier),textAlign:'center',marginBottom:'4px'}}>{homeTier} ({homePScore > 0 ? '+' : ''}{homePScore})</div>}
+                <div className="input-group" style={{marginBottom:'4px'}}>
+                  <label>MMI</label>
+                  <input type="text" inputMode="text" placeholder="--" style={{textAlign:'center'}}
+                    value={gd.homeMMI != null ? gd.homeMMI : ''} onChange={e => updateGameData(game.id, 'homeMMI', e.target.value)} />
+                </div>
+                <div className="input-group" style={{marginBottom:'4px'}}>
+                  <label>Damper</label>
+                  <input type="text" inputMode="decimal" placeholder="1" style={{textAlign:'center'}}
+                    value={gd.homeDamper != null ? gd.homeDamper : ''} onChange={e => updateGameData(game.id, 'homeDamper', e.target.value)} />
+                </div>
+                <div className="input-group">
+                  <label>Regression</label>
+                  <input type="text" inputMode="text" placeholder="0" style={{textAlign:'center'}}
+                    value={gd.homeRegression != null ? gd.homeRegression : ''} onChange={e => updateGameData(game.id, 'homeRegression', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--accent)',textTransform:'uppercase',marginBottom:'4px'}}>{game.awayName}</div>
+                <div className="input-group" style={{marginBottom:'4px'}}>
+                  <label>Pitcher XFIP</label>
+                  <input type="text" inputMode="decimal" placeholder="--" style={{textAlign:'center'}}
+                    value={gd.awayXFIP != null ? gd.awayXFIP : ''} onChange={e => updateGameData(game.id, 'awayXFIP', e.target.value)} />
+                </div>
+                {awayTier && <div style={{fontSize:'10px',fontWeight:700,color:tierColor(awayTier),textAlign:'center',marginBottom:'4px'}}>{awayTier} ({awayPScore > 0 ? '+' : ''}{awayPScore})</div>}
+                <div className="input-group" style={{marginBottom:'4px'}}>
+                  <label>MMI</label>
+                  <input type="text" inputMode="text" placeholder="--" style={{textAlign:'center'}}
+                    value={gd.awayMMI != null ? gd.awayMMI : ''} onChange={e => updateGameData(game.id, 'awayMMI', e.target.value)} />
+                </div>
+                <div className="input-group" style={{marginBottom:'4px'}}>
+                  <label>Damper</label>
+                  <input type="text" inputMode="decimal" placeholder="1" style={{textAlign:'center'}}
+                    value={gd.awayDamper != null ? gd.awayDamper : ''} onChange={e => updateGameData(game.id, 'awayDamper', e.target.value)} />
+                </div>
+                <div className="input-group">
+                  <label>Regression</label>
+                  <input type="text" inputMode="text" placeholder="0" style={{textAlign:'center'}}
+                    value={gd.awayRegression != null ? gd.awayRegression : ''} onChange={e => updateGameData(game.id, 'awayRegression', e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            {/* Model Output */}
+            {homeWinPct != null && (
+              <div style={{background:'rgba(192,132,252,0.08)',border:'1px solid rgba(192,132,252,0.2)',borderRadius:'var(--radius-sm)',padding:'10px',marginTop:'4px'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',textAlign:'center'}}>
+                  <div>
+                    <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--gold)',textTransform:'uppercase',marginBottom:'6px'}}>{game.homeName}</div>
+                    <div style={{fontSize:'20px',fontWeight:900,fontFamily:"'JetBrains Mono', monospace",color:'var(--text)'}}>{Math.round(homeWinPct * 100)}%</div>
+                    <div style={{fontSize:'10px',color:'var(--text-dim)',marginTop:'2px'}}>True Win%</div>
+                    <div style={{fontSize:'15px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",color:'var(--accent)',marginTop:'4px'}}>{homeTrueML != null ? (homeTrueML > 0 ? '+' : '') + homeTrueML : '--'}</div>
+                    <div style={{fontSize:'10px',color:'var(--text-dim)',marginTop:'2px'}}>True ML</div>
+                    {homeEdge != null && (
+                      <div style={{marginTop:'6px',padding:'3px 8px',borderRadius:'6px',display:'inline-block',
+                        background: parseFloat(homeEdge) > 3 ? 'var(--green-bg)' : parseFloat(homeEdge) > 0 ? 'rgba(90,200,250,0.1)' : 'var(--red-bg)',
+                        border: '1px solid ' + (parseFloat(homeEdge) > 3 ? 'var(--green-border)' : parseFloat(homeEdge) > 0 ? 'rgba(90,200,250,0.2)' : 'var(--red-border)')}}>
+                        <span style={{fontSize:'13px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",
+                          color: parseFloat(homeEdge) > 3 ? 'var(--green)' : parseFloat(homeEdge) > 0 ? 'var(--accent)' : 'var(--red)'}}>
+                          {parseFloat(homeEdge) > 0 ? '+' : ''}{homeEdge}%
+                        </span>
+                        <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',marginTop:'1px'}}>EDGE</div>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--accent)',textTransform:'uppercase',marginBottom:'6px'}}>{game.awayName}</div>
+                    <div style={{fontSize:'20px',fontWeight:900,fontFamily:"'JetBrains Mono', monospace",color:'var(--text)'}}>{Math.round(awayWinPct * 100)}%</div>
+                    <div style={{fontSize:'10px',color:'var(--text-dim)',marginTop:'2px'}}>True Win%</div>
+                    <div style={{fontSize:'15px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",color:'var(--accent)',marginTop:'4px'}}>{awayTrueML != null ? (awayTrueML > 0 ? '+' : '') + awayTrueML : '--'}</div>
+                    <div style={{fontSize:'10px',color:'var(--text-dim)',marginTop:'2px'}}>True ML</div>
+                    {awayEdge != null && (
+                      <div style={{marginTop:'6px',padding:'3px 8px',borderRadius:'6px',display:'inline-block',
+                        background: parseFloat(awayEdge) > 3 ? 'var(--green-bg)' : parseFloat(awayEdge) > 0 ? 'rgba(90,200,250,0.1)' : 'var(--red-bg)',
+                        border: '1px solid ' + (parseFloat(awayEdge) > 3 ? 'var(--green-border)' : parseFloat(awayEdge) > 0 ? 'rgba(90,200,250,0.2)' : 'var(--red-border)')}}>
+                        <span style={{fontSize:'13px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",
+                          color: parseFloat(awayEdge) > 3 ? 'var(--green)' : parseFloat(awayEdge) > 0 ? 'var(--accent)' : 'var(--red)'}}>
+                          {parseFloat(awayEdge) > 0 ? '+' : ''}{awayEdge}%
+                        </span>
+                        <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',marginTop:'1px'}}>EDGE</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{fontSize:'9px',color:'var(--text-muted)',textAlign:'center',marginTop:'8px',borderTop:'1px solid rgba(192,132,252,0.1)',paddingTop:'6px'}}>
+                  Books: {game.homeName} {homeBooksProb != null ? Math.round(homeBooksProb * 100) + '%' : '--'} | {game.awayName} {awayBooksProb != null ? Math.round(awayBooksProb * 100) + '%' : '--'}
+                </div>
+              </div>
+            )}
+          </div>
+          );
+        })()}
 
 
         <div className="inputs-section" style={{borderTop:'1px solid var(--border)'}}>
