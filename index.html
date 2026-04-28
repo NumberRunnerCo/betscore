@@ -331,6 +331,44 @@ const load = (k, def) => { const key='nick-'+k; try{const v=storageWorks?localSt
 const BOOK_ABBR = { fanduel:'FD', draftkings:'DK', betmgm:'MGM', caesars:'CZR', pointsbet:'PB', betrivers:'BR', unibet:'UNI', wynn:'WYNN', bet365:'365', circasports:'CIR', hardrockbet:'HR', espnbet:'ESPN' };
 const bookName = (key) => BOOK_ABBR[key] || key.toUpperCase().slice(0,3);
 
+// ── MLB Team & Pitcher Databases (from King of Capping spreadsheet) ──
+const MLB_TEAMS = {"Arizona Diamondbacks":{"pr":55.47,"reg":-1.25,"dmp":1.0,"wrc":1.03},"Atlanta Braves":{"pr":89.41,"reg":-6.11,"dmp":0.85,"wrc":1.21},"Baltimore Orioles":{"pr":42.04,"reg":0.91,"dmp":1.0,"wrc":1.03},"Boston Red Sox":{"pr":26.4,"reg":3.26,"dmp":0.9,"wrc":0.84},"Chicago Cubs":{"pr":65.18,"reg":-2.63,"dmp":0.95,"wrc":1.22},"Chicago White Sox":{"pr":27.61,"reg":2.99,"dmp":0.95,"wrc":0.92},"Cincinnati Reds":{"pr":81.2,"reg":-4.6,"dmp":0.85,"wrc":0.88},"Cleveland Guardians":{"pr":41.64,"reg":0.65,"dmp":1.0,"wrc":0.97},"Colorado Rockies":{"pr":33.97,"reg":2.87,"dmp":0.95,"wrc":0.85},"Detroit Tigers":{"pr":57.06,"reg":-1.92,"dmp":1.0,"wrc":1.09},"Houston Astros":{"pr":23.19,"reg":2.57,"dmp":0.95,"wrc":1.18},"Kansas City Royals":{"pr":27.91,"reg":3.7,"dmp":0.9,"wrc":0.94},"Los Angeles Angels":{"pr":17.07,"reg":3.33,"dmp":0.9,"wrc":1.04},"Los Angeles Dodgers":{"pr":92.8,"reg":-7.26,"dmp":0.85,"wrc":1.31},"Miami Marlins":{"pr":31.23,"reg":2.69,"dmp":0.95,"wrc":1.02},"Milwaukee Brewers":{"pr":49.66,"reg":-0.52,"dmp":1.0,"wrc":0.93},"Minnesota Twins":{"pr":34.82,"reg":0.76,"dmp":1.0,"wrc":0.96},"New York Mets":{"pr":6.2,"reg":5.68,"dmp":0.85,"wrc":0.79},"New York Yankees":{"pr":86.58,"reg":-5.55,"dmp":0.85,"wrc":1.12},"Oakland Athletics":{"pr":54.88,"reg":-0.62,"dmp":1.0,"wrc":0.93},"Philadelphia Phillies":{"pr":2.48,"reg":5.01,"dmp":0.85,"wrc":0.83},"Pittsburgh Pirates":{"pr":59.05,"reg":-2.59,"dmp":0.95,"wrc":0.95},"San Diego Padres":{"pr":86.46,"reg":-5.13,"dmp":0.85,"wrc":0.97},"San Francisco Giants":{"pr":45.8,"reg":0.87,"dmp":1.0,"wrc":0.88},"Seattle Mariners":{"pr":45.36,"reg":0.5,"dmp":1.0,"wrc":1.04},"St. Louis Cardinals":{"pr":53.97,"reg":-1.01,"dmp":1.0,"wrc":1.02},"Tampa Bay Rays":{"pr":75.18,"reg":-2.7,"dmp":0.95,"wrc":1.03},"Texas Rangers":{"pr":42.91,"reg":-0.13,"dmp":1.0,"wrc":0.95},"Toronto Blue Jays":{"pr":29.95,"reg":2.93,"dmp":0.95,"wrc":0.94},"Washington Nationals":{"pr":36.08,"reg":1.82,"dmp":1.0,"wrc":1.02}};
+
+const MLB_PITCHERS = {"Aaron Ashby":2.91,"Aaron Bummer":3.8,"Aaron Civale":4.69,"Aaron Nola":3.71,"Abner Uribe":2.99,"Adrian Houser":4.35,"Anthony Kay":5.3,"Alex Vesia":3.61,"Andre Pallante":4.26,"Andr\u00e9s Mu\u00f1oz":2.97,"Andrew Abbott":4.38,"Andrew Heaney":4.93,"Andrew Kittredge":2.66,"Angel Chivilli":4.96,"Angel Zerpa":3.64,"Anthony Banda":4.7,"Anthony Bender":4.5,"Antonio Senzatela":4.92,"Aroldis Chapman":2.67,"Austin Gomber":5.67,"Bailey Falter":5.03,"Bailey Ober":4.68,"Ben Brown":3.5,"Ben Casparius":4.46,"Bennett Sousa":3.54,"Blake Snell":3.09,"Bowden Francis":5.21,"Brad Keller":3.35,"Brad Lord":3.95,"Bradley Blalock":5.67,"Brady Singer":4.3,"Brandon Eisert":4.01,"Brandon Pfaadt":4.08,"Brandon Walter":3.14,"Brandon Woodruff":3.63,"Brandon Young":4.55,"Brant Hurter":4.05,"Braxton Ashcraft":3.48,"Brayan Bello":4.49,"Braydon Fisher":3.69,"Brenan Hanifee":3.95,"Brendon Little":3.4,"Brennan Bernardino":4.34,"Brent Suter":4.16,"Brock Burke":3.87,"Bryan Abreu":3.32,"Bryan Baker":3.06,"Bryan King":3.42,"Bryan Woo":3.52,"Bryce Elder":3.99,"Bryce Miller":4.6,"Bubba Chandler":4.11,"Cade Cavalli":4.02,"Cade Gibson":4.23,"Cade Horton":4.25,"Cade Povich":4.02,"Cade Smith":2.78,"Cal Quantrill":4.86,"Caleb Ferguson":4.06,"Caleb Thielbar":3.79,"Calvin Faucher":4.03,"Cam Schlittler":3.29,"Camilo Doval":3.67,"Carlos Est\u00e9vez":5.07,"Carlos Rod\u00f3n":3.89,"Carlos Vargas":4.24,"Carmen Mlodzinski":3.58,"Casey Legumina":4.52,"Casey Mize":3.93,"Chad Patrick":4.24,"Charlie Morton":4.4,"Chase Burns":3.04,"Chase Dollander":4.5,"Chase Shugart":4.98,"Chris Bassitt":4.11,"Chris Paddack":4.56,"Chris Sale":3.11,"Clarke Schmidt":4.44,"Clay Holmes":4.23,"Clayton Kershaw":4.18,"Cole Henry":5.63,"Cole Ragans":3.06,"Cole Sands":4.02,"Connor Prielipp":3.87,"Colin Rea":4.26,"Colton Gordon":4.4,"Connelly Early":3.64,"Connor Brogdon":4.29,"Corbin Burnes":3.73,"Cristopher S\u00e1nchez":2.74,"Daniel Lynch IV":4.6,"Daniel Palencia":3.43,"Danny Coulombe":4.15,"David Bednar":2.71,"David Festa":4.49,"David Morgan":4.14,"David Peterson":3.74,"Davis Martin":4.4,"Dean Kremer":4.13,"Dennis Santana":4.29,"Devin Williams":2.97,"Dietrich Enns":3.53,"DL Hall":4.81,"Drew Pomeranz":4.09,"Drew Rasmussen":3.62,"Dustin May":4.45,"Dylan Cease":3.36,"Dylan Lee":3.24,"Eduard Bazardo":3.94,"Eduardo Rodriguez":4.46,"Edward Cabrera":3.72,"Edwin D\u00edaz":2.66,"Edwin Uceta":3.43,"Elvis Alvarado":4.37,"Emerson Hancock":4.28,"Emilio Pag\u00e1n":4.16,"Emmet Sheehan":3.41,"Enyel De Los Santos":4.34,"Eric Lauer":4.42,"Eric Orze":4.51,"Erick Fedde":5.39,"Eury P\u00e9rez":4.16,"Fernando Cruz":3.25,"Framber Valdez":3.5,"Freddy Peralta":3.83,"Gabe Speier":3.06,"Garrett Cleavinger":3.06,"Garrett Crochet":2.78,"Garrett Whitlock":3.09,"Gavin Williams":3.98,"George Kirby":3.38,"Germ\u00e1n M\u00e1rquez":5.27,"Gordon Graceffo":4.14,"Graham Ashcraft":3.35,"Grant Anderson":3.89,"Grant Holmes":4.16,"Grant Taylor":2.36,"Greg Weissert":4.03,"Gregory Soto":3.78,"Griffin Canning":4.09,"Griffin Jax":2.53,"Hayden Birdsong":5.0,"Hoby Milner":4.28,"Hogan Harris":4.56,"Huascar Brazob\u00e1n":3.99,"Hunter Brown":3.15,"Hunter Dobbins":4.11,"Hunter Gaddis":3.63,"Hunter Greene":3.27,"Hurston Waldrep":3.66,"Ian Seymour":3.79,"Isaac Mattson":4.94,"J.T. Ginn":3.66,"Jack Dreyer":4.04,"Jack Flaherty":3.99,"Jack Kochanowicz":5.11,"Jack Leiter":4.43,"Jack Perkins":4.26,"Jackson Rutledge":4.71,"Jacob deGrom":3.33,"Jacob Latz":4.3,"Jacob Lopez":4.64,"Jacob Misiorowski":3.36,"Jacob Webb":4.47,"Jake Bird":3.46,"Jake Irvin":4.72,"Jakob Junis":4.37,"Jalen Beeks":4.12,"Jameson Taillon":4.42,"Janson Junk":4.13,"Jared Koenig":3.79,"Jason Adam":4.06,"Jason Alexander":4.19,"Javier Assad":4.65,"Jeff Hoffman":3.48,"Jeffrey Springs":4.57,"Jeremiah Estrada":3.29,"Jes\u00fas Luzardo":3.19,"Jhoan Duran":2.48,"Jimmy Herget":4.26,"Joe Boyle":4.29,"Joe Ross":4.83,"Joe Ryan":3.74,"Joey Cantillo":3.68,"Joey Wentz":4.51,"John King":4.05,"John Schreiber":4.25,"JoJo Romero":4.23,"Jonathan Bowlan":3.48,"Jonathan Cannon":5.01,"Jordan Hicks":4.68,"Jordan Leasure":4.22,"Jordan Romano":4.36,"Jorge Alcala":4.82,"Jose A. Ferrer":3.31,"Jos\u00e9 Berr\u00edos":4.43,"Jos\u00e9 Butt\u00f3":4.45,"Jose Quintana":5.11,"Jos\u00e9 Soriano":3.41,"Jos\u00e9 Ure\u00f1a":5.45,"Josh Hader":3.18,"JP Sears":4.76,"Juan Mejia":4.1,"Justin Sterner":3.92,"Justin Topa":4.02,"Justin Verlander":4.62,"Justin Wrobleski":3.53,"Keegan Akin":4.62,"Keider Montero":4.39,"Kenley Jansen":4.54,"Kevin Gausman":3.62,"Kevin Kelly":3.67,"Kodai Senga":4.43,"Kody Funderburk":4.32,"Kolby Allard":4.6,"Kris Bubic":3.73,"Kumar Rocker":4.13,"Kyle Bradish":3.37,"Kyle Finnegan":3.84,"Kyle Freeland":4.28,"Kyle Harrison":3.63,"Kei-Wei Teng":4.2,"Kyle Hendricks":4.73,"Kyle Leahy":3.97,"Lake Bachar":4.18,"Lance McCullers Jr.":4.89,"Landen Roupp":3.91,"Logan Allen":4.72,"Logan Evans":4.87,"Logan Gilbert":3.05,"Logan Webb":2.9,"Louis Varland":2.83,"Lucas Erceg":4.09,"Lucas Giolito":4.59,"Luis Castillo":4.08,"Luis Garc\u00eda":4.09,"Luis Gil":5.82,"Luis Morales":5.04,"Luis Ortiz":3.83,"Luis Severino":4.63,"Luke Jackson":4.92,"Luke Weaver":4.22,"MacKenzie Gore":3.68,"Mark Leiter Jr.":3.88,"Mart\u00edn P\u00e9rez":4.77,"Mason Englert":3.88,"Mason Fluharty":3.96,"Mason Miller":1.86,"Mason Montgomery":3.31,"Matt Brash":3.19,"Matt Festa":3.8,"Matt Strahm":4.29,"Matt Svanson":3.87,"Matthew Boyd":4.05,"Matthew Liberatore":4.42,"Max Fried":3.5,"Max Meyer":3.64,"Max Scherzer":4.86,"Merrill Kelly":3.92,"Michael King":4.21,"Michael Lorenzen":4.23,"Michael McGreevy":4.25,"Michael Soroka":3.91,"Michael Wacha":4.5,"Mick Abel":4.32,"Mike Burrows":3.93,"Mike Montgomery":4.67,"Miles Mikolas":4.86,"Mitch Keller":4.17,"Mitch Spence":4.48,"Mitchell Parker":4.98,"Nathan Eovaldi":3.15,"Nick Lodolo":3.66,"Nick Martinez":4.53,"Nick Mears":4.35,"Nick Pivetta":3.79,"Noah Cameron":4.14,"Nolan McLean":2.71,"Orion Kerkering":4.51,"Osvaldo Bido":5.62,"Pablo L\u00f3pez":3.87,"Parker Messick":3.19,"Patrick Corbin":4.18,"Payton Tolle":3.99,"Paul Skenes":3.08,"Pete Fairbanks":3.7,"Phil Maton":3.28,"Pierce Johnson":3.96,"Quinn Priester":3.81,"Rafael Montero":4.48,"Raisel Iglesias":3.63,"Randy Rodr\u00edguez":2.9,"Randy V\u00e1squez":5.16,"Ranger Suarez":3.65,"Reed Garrett":3.65,"Reese Olson":4.03,"Reid Detmers":3.32,"Riley O'Brien":3.47,"Robbie Ray":4.29,"Robert Garcia":3.86,"Robert Suarez":3.25,"Roki Sasaki":5.35,"Ronny Henriquez":3.39,"Ryan Bergert":4.68,"Ryan Feltner":4.47,"Ryan Gusto":4.59,"Ryan Helsley":3.64,"Ryan Pepiot":4.07,"Ryan Thompson":4.19,"Ryan Walker":3.7,"Ryan Weathers":3.49,"Ryan Yarbrough":4.48,"Ryan Zeferjahn":4.27,"Ryne Nelson":4.15,"Ryne Stanek":4.9,"Sandy Alcantara":4.24,"Scott Barlow":4.77,"Sean Burke":4.59,"Sean Manaea":3.56,"Sean Newcomb":3.71,"Seranthony Dom\u00ednguez":3.93,"Seth Lugo":4.4,"Shane Baz":3.97,"Shane Smith":4.32,"Shawn Armstrong":4.1,"Shohei Ohtani":2.7,"Shota Imanaga":4.31,"Simeon Woods Richardson":4.93,"Slade Cecconi":4.23,"Sonny Gray":3.2,"Spencer Arrighetti":4.87,"Spencer Bivens":4.26,"Spencer Schwellenbach":3.01,"Spencer Strider":4.24,"Stephen Kolek":4.16,"Steven Cruz":4.53,"Steven Matz":3.85,"Steven Okert":3.91,"Steven Wilson":5.13,"Taijuan Walker":4.84,"Taj Bradley":4.31,"Tanner Banks":3.78,"Tanner Bibee":4.15,"Tanner Gordon":4.31,"Tanner Scott":3.84,"Tarik Skubal":2.68,"Trey Yesavage":4.48,"Taylor Rogers":4.4,"Tim Hill":3.78,"Tobias Myers":4.32,"Tommy Kahnle":4.66,"Tomoyuki Sugano":4.63,"Tony Santillan":4.04,"Trevor Megill":3.28,"Trevor Rogers":3.79,"Trevor Williams":4.56,"Tristan Beck":4.49,"Tyler Alexander":4.31,"Tyler Anderson":5.41,"Tyler Ferguson":5.07,"Tyler Gilbert":5.0,"Tyler Glasnow":3.46,"Tyler Holton":3.74,"Tyler Kinley":4.57,"Tyler Mahle":4.3,"Tyler Phillips":4.3,"Tyler Rogers":3.19,"Tylor Megill":3.73,"Valente Bellozo":5.44,"Victor Vodnik":4.17,"Walker Buehler":4.9,"Wandy Peralta":3.84,"Will Vest":3.09,"Will Warren":3.71,"Yariel Rodr\u00edguez":4.6,"Yennier Cano":3.67,"Yoendrys G\u00f3mez":5.17,"Yohan Ram\u00edrez":3.81,"Yoshinobu Yamamoto":3.14,"Yu Darvish":4.15,"Yuki Matsui":4.94,"Yusei Kikuchi":4.25,"Zac Gallen":4.14,"Zach Eflin":4.24,"Zack Littell":4.46,"Zack Wheeler":2.76,"Zebby Matthews":3.81};
+
+// Look up team data by matching Odds API team name to spreadsheet name
+const findMLBTeam = (apiName) => {
+  if (!apiName) return null;
+  const n = apiName.toLowerCase().trim();
+  for (const [fullName, data] of Object.entries(MLB_TEAMS)) {
+    if (fullName.toLowerCase() === n) return { name: fullName, ...data };
+    // Match on city or nickname: "Tampa Bay Rays" matches "rays" or "tampa bay"
+    const parts = fullName.toLowerCase().split(' ');
+    const nick = parts[parts.length - 1]; // last word = nickname
+    if (n.includes(nick) || fullName.toLowerCase().includes(n)) return { name: fullName, ...data };
+  }
+  return null;
+};
+
+// Look up pitcher XFIP by name (fuzzy: case-insensitive, handles accents)
+const findPitcherXFIP = (pitcherName) => {
+  if (!pitcherName || pitcherName === 'UNDECIDED') return null;
+  const n = pitcherName.toLowerCase().trim();
+  for (const [name, xfip] of Object.entries(MLB_PITCHERS)) {
+    if (name.toLowerCase() === n) return xfip;
+  }
+  // Partial match: last name
+  const lastName = n.split(' ').pop();
+  if (lastName.length >= 4) {
+    for (const [name, xfip] of Object.entries(MLB_PITCHERS)) {
+      if (name.toLowerCase().split(' ').pop() === lastName) return xfip;
+    }
+  }
+  return null;
+};
+
+
+
 
 const COLLEGE_MASCOTS = /\b(bulldogs|cardinals|wildcats|tigers|eagles|bears|lions|cougars|huskies|knights|warriors|panthers|hawks|falcons|hornets|owls|rams|wolves|mustangs|spartans|trojans|gators|seminoles|hurricanes|cavaliers|hokies|commodores|volunteers|crimson tide|sooners|longhorns|jayhawks|mountaineers|cyclones|cowboys|red raiders|bobcats|aggies|bruins|beavers|ducks|sun devils|utes|buffaloes|golden bears|aztecs|lobos|rebels|running rebels|runnin rebels|hoyas|blue devils|demon deacons|tar heels|wolfpack|orange|orangemen|fighting irish|boilermakers|hoosiers|buckeyes|wolverines|badgers|hawkeyes|golden gophers|illini|fighting illini|nittany lions|terrapins|terps|scarlet knights|cornhuskers|razorbacks|gamecocks|blue jays|musketeers|friars|pirates|peacocks|gaels|zags|shockers|bearcats|bluejays|red storm|johnnies|golden eagles|braves|bison|flyers|explorers|dukes|spiders|colonials|patriots|miners|thunderbirds|anteaters|matadors|titans|highlanders|roadrunners|49ers|monarchs|hatters|paladins|catamounts|phoenix|penguins|kangaroos|dolphins|ospreys|blazers|jaguars)\b/g;
 const isCollegeSport = (s) => s === 'basketball_ncaab' || s === 'americanfootball_ncaaf';
@@ -1397,7 +1435,7 @@ function App() {
   // Convert ML probability movement to pseudo-spread value for BetScore
   const probToSpreadEquiv = (probDelta) => probDelta * 25; // 2% shift ≈ 0.5 spread pts equivalent
 
-  // ── MLB Model Functions (Nick's King of Capping formulas) ──
+  // ── MLB Model Functions (Nick's King of Capping — Bottom Section formulas) ──
   const xfipToTier = (xfip) => {
     if (xfip == null || xfip === '') return null;
     const x = parseFloat(xfip);
@@ -1408,32 +1446,51 @@ function App() {
     if (x < 4.7) return 'Weak';
     return 'Fade';
   };
+  // Bottom section pitcher scoring (different from top section)
   const tierToScore = (tier) => {
-    if (tier === 'Ace') return 0.4;
-    if (tier === 'Strong') return 0.2;
-    if (tier === 'Average') return 0;
-    if (tier === 'Weak') return -0.2;
-    if (tier === 'Fade') return -0.4;
-    return 0;
+    if (tier === 'Ace') return 1.3;
+    if (tier === 'Strong') return 1.15;
+    if (tier === 'Average') return 1;
+    if (tier === 'Weak') return 0.85;
+    if (tier === 'Fade') return 0.7;
+    return 1;
   };
-  // Nick's logistic True Win% formula
-  // trueWinPct = 1/(1+EXP(-0.15*(((homeMMI - awayMMI)+(homePitcherScore - awayPitcherScore)-(homeRegression*0.05))*(1-(homeDamper/10)))))
-  const calcTrueWinPct = (homeMMI, awayMMI, homePScore, awayPScore, homeReg, homeDamp) => {
-    const mmi = (parseFloat(homeMMI) || 0) - (parseFloat(awayMMI) || 0);
-    const pitch = (homePScore || 0) - (awayPScore || 0);
-    const reg = (parseFloat(homeReg) || 0) * 0.05;
-    const damp = 1 - ((parseFloat(homeDamp) || 10) / 10); // default damper=10 means no dampening (1-10/10=0... wait)
-    // Nick's formula: (1-(H/10)) where H is damper value. H=1 means (1-0.1)=0.9, H=0.85 means damper col stores 0.85-1.0
-    // Looking at Tracker: L (Dampen) ranges 0.85-1.0 and formula uses (1-(H/10))
-    // But H in MLB sheet is "Volatility Damper" which is the L column value (0.85-1.0)
-    // So (1-(0.95/10)) = 0.905 — this doesn't make sense as a big multiplier
-    // Re-reading: the formula is *(1-(H3/10))* and H values are like 0.85, 0.9, 0.95, 1.0
-    // So 1-(1.0/10) = 0.9, 1-(0.85/10) = 0.915
-    // Actually that gives values very close to 0.9 always, making it a near-constant
-    // The damper slightly adjusts the exponent — more volatile teams get slightly more dampened
-    const dampMult = 1 - ((parseFloat(homeDamp) != null && homeDamp !== '' ? parseFloat(homeDamp) : 1) / 10);
-    const exponent = -0.15 * ((mmi + pitch - reg) * dampMult);
-    return 1 / (1 + Math.exp(exponent));
+  const powerTier = (pr) => {
+    const d = parseFloat(pr);
+    if (isNaN(d)) return '';
+    if (d >= 68) return 'Elite';
+    if (d >= 56) return 'Strong';
+    if (d >= 44) return 'Average';
+    return 'Weak';
+  };
+  const offenseTier = (wrc) => {
+    const w = parseFloat(wrc);
+    if (isNaN(w)) return '';
+    if (w >= 1.15) return 'Elite';
+    if (w >= 1.07) return 'Strong';
+    if (w >= 0.98) return 'Average';
+    if (w >= 0.9) return 'Weak';
+    return 'Putrid';
+  };
+  const matchupTier = (z) => {
+    if (isNaN(z)) return '';
+    if (z >= 1.15) return 'Elite';
+    if (z >= 1.05) return 'Strong';
+    if (z >= 0.95) return 'Average';
+    if (z >= 0.85) return 'Weak';
+    return 'Putrid';
+  };
+  // Bottom section composite + logistic True Win%
+  // Composite = (0.25*PowerRating + 0.25*MatchupScore + 0.35*AdjPitcher + 0.15*AdjRegression) * (1 - Damper/10)
+  // MatchupScore = 0.6*wRC+ + 0.4*(opponent XFIP/4)
+  // AdjPitcher = PitcherTierScore * 65.4
+  // AdjRegression = RegressionScore * 10
+  // Win% = 1/(1+EXP(-0.07*(HomeComposite - AwayComposite)))
+  const calcComposite = (pr, matchup, adjPitch, adjReg, damper) => {
+    return (0.25 * pr + 0.25 * matchup + 0.35 * adjPitch + 0.15 * adjReg) * (1 - damper / 10);
+  };
+  const calcTrueWinPct = (homeComp, awayComp) => {
+    return 1 / (1 + Math.exp(-0.07 * (homeComp - awayComp)));
   };
   // Convert win probability to American ML
   const winPctToML = (pct) => {
@@ -1441,11 +1498,11 @@ function App() {
     return pct >= 0.5 ? Math.round(-100 * pct / (1 - pct)) : Math.round(100 * (1 - pct) / pct);
   };
   const tierColor = (tier) => {
-    if (tier === 'Ace') return '#22c55e';
+    if (tier === 'Ace' || tier === 'Elite') return '#22c55e';
     if (tier === 'Strong') return '#5ac8fa';
     if (tier === 'Average') return '#a1a1aa';
     if (tier === 'Weak') return '#eab308';
-    if (tier === 'Fade') return '#ef4444';
+    if (tier === 'Fade' || tier === 'Putrid') return '#ef4444';
     return '#a1a1aa';
   };
 
@@ -1775,6 +1832,35 @@ function App() {
               openHomeProb: g.homeProb || null, openAwayProb: g.awayProb || null,
               isMlPrimary: g.isMlPrimary || false,
             };
+            // ── Auto-populate MLB Model inputs from King of Capping databases ──
+            if (cfg.mlPrimary && sport === 'baseball_mlb') {
+              const gd = next[g.id];
+              const homeTeam = findMLBTeam(g.homeFullName || g.homeName);
+              const awayTeam = findMLBTeam(g.awayFullName || g.awayName);
+              if (homeTeam) {
+                if (gd.homePR == null) gd.homePR = String(homeTeam.pr);
+                if (gd.homeRegression == null) gd.homeRegression = String(homeTeam.reg);
+                if (gd.homeDamper == null) gd.homeDamper = String(homeTeam.dmp);
+                if (gd.homeWRC == null && homeTeam.wrc != null) gd.homeWRC = String(Math.round(homeTeam.wrc * 100));
+              }
+              if (awayTeam) {
+                if (gd.awayPR == null) gd.awayPR = String(awayTeam.pr);
+                if (gd.awayRegression == null) gd.awayRegression = String(awayTeam.reg);
+                if (gd.awayDamper == null) gd.awayDamper = String(awayTeam.dmp);
+                if (gd.awayWRC == null && awayTeam.wrc != null) gd.awayWRC = String(Math.round(awayTeam.wrc * 100));
+              }
+              // Auto-lookup pitcher XFIP if pitcher name available from ESPN
+              if (g.homePitcher) {
+                const hxfip = findPitcherXFIP(g.homePitcher);
+                if (hxfip != null && gd.homeXFIP == null) gd.homeXFIP = String(hxfip);
+                if (!gd._homePitcherName) gd._homePitcherName = g.homePitcher;
+              }
+              if (g.awayPitcher) {
+                const axfip = findPitcherXFIP(g.awayPitcher);
+                if (axfip != null && gd.awayXFIP == null) gd.awayXFIP = String(axfip);
+                if (!gd._awayPitcherName) gd._awayPitcherName = g.awayPitcher;
+              }
+            }
           } else {
             const gd = next[g.id];
             // Migration from old single-line format
@@ -3091,120 +3177,168 @@ function App() {
         )}
 
 
-        {/* ── MLB Model Section (Nick's King of Capping) ── */}
+        {/* ── MLB Model Section (Nick's King of Capping — Bottom Section) ── */}
         {sport === 'mlb' && (() => {
-          const homeTier = xfipToTier(gd.homeXFIP);
-          const awayTier = xfipToTier(gd.awayXFIP);
-          const homePScore = tierToScore(homeTier);
-          const awayPScore = tierToScore(awayTier);
-          const homeWinPct = (gd.homeMMI != null && gd.homeMMI !== '' && gd.awayMMI != null && gd.awayMMI !== '')
-            ? calcTrueWinPct(gd.homeMMI, gd.awayMMI, homePScore, awayPScore, gd.homeRegression, gd.homeDamper)
-            : null;
+          // Pitcher tiers & scores
+          const homePTier = xfipToTier(gd.homeXFIP);
+          const awayPTier = xfipToTier(gd.awayXFIP);
+          const homePScore = tierToScore(homePTier);
+          const awayPScore = tierToScore(awayPTier);
+          // wRC+ as decimal (Nick enters whole number like 103, we divide by 100)
+          const homeWRC = gd.homeWRC != null && gd.homeWRC !== '' ? parseFloat(gd.homeWRC) / 100 : null;
+          const awayWRC = gd.awayWRC != null && gd.awayWRC !== '' ? parseFloat(gd.awayWRC) / 100 : null;
+          // Pitcher correction = XFIP / 4
+          const homePC = gd.homeXFIP ? parseFloat(gd.homeXFIP) / 4 : null;
+          const awayPC = gd.awayXFIP ? parseFloat(gd.awayXFIP) / 4 : null;
+          // Matchup Score = 0.6*wRC+ + 0.4*(opponent's XFIP/4)
+          const homeMatchup = (homeWRC != null && awayPC != null) ? 0.6 * homeWRC + 0.4 * awayPC : null;
+          const awayMatchup = (awayWRC != null && homePC != null) ? 0.6 * awayWRC + 0.4 * homePC : null;
+          // Adjusted scores
+          const homeAdjPitch = homePScore * 65.4;
+          const awayAdjPitch = awayPScore * 65.4;
+          const homeAdjReg = (parseFloat(gd.homeRegression) || 0) * 10;
+          const awayAdjReg = (parseFloat(gd.awayRegression) || 0) * 10;
+          const homeDamp = gd.homeDamper != null && gd.homeDamper !== '' ? parseFloat(gd.homeDamper) : 1;
+          const awayDamp = gd.awayDamper != null && gd.awayDamper !== '' ? parseFloat(gd.awayDamper) : 1;
+          const homePR = parseFloat(gd.homePR) || 0;
+          const awayPR = parseFloat(gd.awayPR) || 0;
+          // Composites
+          const canCalc = homeMatchup != null && awayMatchup != null && homePR !== 0 && awayPR !== 0;
+          const homeComp = canCalc ? calcComposite(homePR, homeMatchup * 90, homeAdjPitch, homeAdjReg, homeDamp) : null;
+          const awayComp = canCalc ? calcComposite(awayPR, awayMatchup * 90, awayAdjPitch, awayAdjReg, awayDamp) : null;
+          const homeWinPct = canCalc ? calcTrueWinPct(homeComp, awayComp) : null;
           const awayWinPct = homeWinPct != null ? 1 - homeWinPct : null;
           const homeTrueML = winPctToML(homeWinPct);
           const awayTrueML = winPctToML(awayWinPct);
+          // Books implied probability & Edge
           const homeBooksProb = mlToProb(gd.homeML || game.homeML);
           const awayBooksProb = mlToProb(gd.awayML || game.awayML);
           const homeEdge = (homeWinPct != null && homeBooksProb != null) ? ((homeWinPct - homeBooksProb) * 100).toFixed(1) : null;
           const awayEdge = (awayWinPct != null && awayBooksProb != null) ? ((awayWinPct - awayBooksProb) * 100).toFixed(1) : null;
+          // Bet sizing: To Win = IF(edge<7.4, 0, IF(ML>0, edge*(ML/100), edge*(100/ABS(ML))))
+          const calcToWin = (edgeStr, ml) => {
+            if (edgeStr == null || ml == null) return null;
+            const edge = parseFloat(edgeStr);
+            if (isNaN(edge) || edge < 7.4) return null;
+            return ml > 0 ? (edge * (ml / 100)).toFixed(2) : (edge * (100 / Math.abs(ml))).toFixed(2);
+          };
+          const homeBet = homeEdge != null && parseFloat(homeEdge) >= 7.4 ? parseFloat(homeEdge).toFixed(1) : null;
+          const awayBet = awayEdge != null && parseFloat(awayEdge) >= 7.4 ? parseFloat(awayEdge).toFixed(1) : null;
+          const homeBookML = gd.homeML || game.homeML;
+          const awayBookML = gd.awayML || game.awayML;
+          const homeToWin = calcToWin(homeEdge, homeBookML);
+          const awayToWin = calcToWin(awayEdge, awayBookML);
+          // Line movement: closing implied% - opening implied%
+          const openHomeProb = gd.openHomeProb;
+          const openAwayProb = gd.openAwayProb;
+          const curHomeProb = gd.homeProb || homeBooksProb;
+          const curAwayProb = gd.awayProb || awayBooksProb;
+          const homeLineMov = (curHomeProb != null && openHomeProb != null) ? ((curHomeProb - openHomeProb) * 100).toFixed(1) : null;
+          const awayLineMov = (curAwayProb != null && openAwayProb != null) ? ((curAwayProb - openAwayProb) * 100).toFixed(1) : null;
+          // Tiers for display
+          const homePwrT = powerTier(gd.homePR);
+          const awayPwrT = powerTier(gd.awayPR);
+          const homeOffT = homeWRC != null ? offenseTier(homeWRC) : '';
+          const awayOffT = awayWRC != null ? offenseTier(awayWRC) : '';
+          const homeMatchT = homeMatchup != null ? matchupTier(homeMatchup) : '';
+          const awayMatchT = awayMatchup != null ? matchupTier(awayMatchup) : '';
           return (
           <div className="inputs-section" style={{borderTop:'1px solid var(--border)'}}>
             <div className="inputs-label" style={{color:'#c084fc',display:'flex',alignItems:'center',gap:'6px'}}>
               <span style={{fontSize:'14px'}}>&#9813;</span> King of Capping Model
             </div>
 
-            {/* Pitcher Inputs */}
+            {/* Per-team inputs — 2-column grid */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}}>
-              <div>
-                <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--gold)',textTransform:'uppercase',marginBottom:'4px'}}>{game.homeName}</div>
-                <div className="input-group" style={{marginBottom:'4px'}}>
-                  <label>Pitcher XFIP</label>
-                  <input type="text" inputMode="decimal" placeholder="--" style={{textAlign:'center'}}
-                    value={gd.homeXFIP != null ? gd.homeXFIP : ''} onChange={e => updateGameData(game.id, 'homeXFIP', e.target.value)} />
+              {[{side:'home',name:game.homeName,color:'var(--gold)'},{side:'away',name:game.awayName,color:'var(--accent)'}].map(t => {
+                const prefix = t.side;
+                const pTier = prefix === 'home' ? homePTier : awayPTier;
+                const pScore = prefix === 'home' ? homePScore : awayPScore;
+                const pwrT = prefix === 'home' ? homePwrT : awayPwrT;
+                const offT = prefix === 'home' ? homeOffT : awayOffT;
+                const mT = prefix === 'home' ? homeMatchT : awayMatchT;
+                return (
+                <div key={prefix}>
+                  <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:t.color,textTransform:'uppercase',marginBottom:'4px'}}>{t.name}</div>
+                  <div className="input-group" style={{marginBottom:'3px'}}>
+                    <label>Power Rating</label>
+                    <input type="text" inputMode="decimal" placeholder="--" style={{textAlign:'center'}}
+                      value={gd[prefix+'PR'] != null ? gd[prefix+'PR'] : ''} onChange={e => updateGameData(game.id, prefix+'PR', e.target.value)} />
+                  </div>
+                  {pwrT && <div style={{fontSize:'9px',fontWeight:700,color:tierColor(pwrT),textAlign:'center',marginBottom:'2px'}}>{pwrT}</div>}
+                  <div className="input-group" style={{marginBottom:'3px'}}>
+                    <label>Pitcher Name</label>
+                    <input type="text" placeholder="Name..." style={{textAlign:'center',fontSize:'10px'}}
+                      value={gd['_'+prefix+'PitcherName'] || ''} onChange={e => {
+                        const name = e.target.value;
+                        updateGameData(game.id, '_'+prefix+'PitcherName', name);
+                        const xfip = findPitcherXFIP(name);
+                        if (xfip != null) updateGameData(game.id, prefix+'XFIP', String(xfip));
+                      }} />
+                  </div>
+                  <div className="input-group" style={{marginBottom:'3px'}}>
+                    <label>Pitcher XFIP</label>
+                    <input type="text" inputMode="decimal" placeholder="--" style={{textAlign:'center'}}
+                      value={gd[prefix+'XFIP'] != null ? gd[prefix+'XFIP'] : ''} onChange={e => updateGameData(game.id, prefix+'XFIP', e.target.value)} />
+                  </div>
+                  {pTier && <div style={{fontSize:'9px',fontWeight:700,color:tierColor(pTier),textAlign:'center',marginBottom:'2px'}}>{pTier} ({pScore})</div>}
+                  <div className="input-group" style={{marginBottom:'3px'}}>
+                    <label>wRC+</label>
+                    <input type="text" inputMode="decimal" placeholder="100" style={{textAlign:'center'}}
+                      value={gd[prefix+'WRC'] != null ? gd[prefix+'WRC'] : ''} onChange={e => updateGameData(game.id, prefix+'WRC', e.target.value)} />
+                  </div>
+                  {offT && <div style={{fontSize:'9px',fontWeight:700,color:tierColor(offT),textAlign:'center',marginBottom:'2px'}}>{offT}</div>}
+                  <div className="input-group" style={{marginBottom:'3px'}}>
+                    <label>Damper</label>
+                    <input type="text" inputMode="decimal" placeholder="1" style={{textAlign:'center'}}
+                      value={gd[prefix+'Damper'] != null ? gd[prefix+'Damper'] : ''} onChange={e => updateGameData(game.id, prefix+'Damper', e.target.value)} />
+                  </div>
+                  <div className="input-group">
+                    <label>Regression</label>
+                    <input type="text" inputMode="text" placeholder="0" style={{textAlign:'center'}}
+                      value={gd[prefix+'Regression'] != null ? gd[prefix+'Regression'] : ''} onChange={e => updateGameData(game.id, prefix+'Regression', e.target.value)} />
+                  </div>
+                  {mT && <div style={{fontSize:'9px',fontWeight:600,color:'var(--text-muted)',textAlign:'center',marginTop:'4px'}}>Matchup: <span style={{color:tierColor(mT)}}>{mT}</span></div>}
                 </div>
-                {homeTier && <div style={{fontSize:'10px',fontWeight:700,color:tierColor(homeTier),textAlign:'center',marginBottom:'4px'}}>{homeTier} ({homePScore > 0 ? '+' : ''}{homePScore})</div>}
-                <div className="input-group" style={{marginBottom:'4px'}}>
-                  <label>MMI</label>
-                  <input type="text" inputMode="text" placeholder="--" style={{textAlign:'center'}}
-                    value={gd.homeMMI != null ? gd.homeMMI : ''} onChange={e => updateGameData(game.id, 'homeMMI', e.target.value)} />
-                </div>
-                <div className="input-group" style={{marginBottom:'4px'}}>
-                  <label>Damper</label>
-                  <input type="text" inputMode="decimal" placeholder="1" style={{textAlign:'center'}}
-                    value={gd.homeDamper != null ? gd.homeDamper : ''} onChange={e => updateGameData(game.id, 'homeDamper', e.target.value)} />
-                </div>
-                <div className="input-group">
-                  <label>Regression</label>
-                  <input type="text" inputMode="text" placeholder="0" style={{textAlign:'center'}}
-                    value={gd.homeRegression != null ? gd.homeRegression : ''} onChange={e => updateGameData(game.id, 'homeRegression', e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--accent)',textTransform:'uppercase',marginBottom:'4px'}}>{game.awayName}</div>
-                <div className="input-group" style={{marginBottom:'4px'}}>
-                  <label>Pitcher XFIP</label>
-                  <input type="text" inputMode="decimal" placeholder="--" style={{textAlign:'center'}}
-                    value={gd.awayXFIP != null ? gd.awayXFIP : ''} onChange={e => updateGameData(game.id, 'awayXFIP', e.target.value)} />
-                </div>
-                {awayTier && <div style={{fontSize:'10px',fontWeight:700,color:tierColor(awayTier),textAlign:'center',marginBottom:'4px'}}>{awayTier} ({awayPScore > 0 ? '+' : ''}{awayPScore})</div>}
-                <div className="input-group" style={{marginBottom:'4px'}}>
-                  <label>MMI</label>
-                  <input type="text" inputMode="text" placeholder="--" style={{textAlign:'center'}}
-                    value={gd.awayMMI != null ? gd.awayMMI : ''} onChange={e => updateGameData(game.id, 'awayMMI', e.target.value)} />
-                </div>
-                <div className="input-group" style={{marginBottom:'4px'}}>
-                  <label>Damper</label>
-                  <input type="text" inputMode="decimal" placeholder="1" style={{textAlign:'center'}}
-                    value={gd.awayDamper != null ? gd.awayDamper : ''} onChange={e => updateGameData(game.id, 'awayDamper', e.target.value)} />
-                </div>
-                <div className="input-group">
-                  <label>Regression</label>
-                  <input type="text" inputMode="text" placeholder="0" style={{textAlign:'center'}}
-                    value={gd.awayRegression != null ? gd.awayRegression : ''} onChange={e => updateGameData(game.id, 'awayRegression', e.target.value)} />
-                </div>
-              </div>
+                );
+              })}
             </div>
 
             {/* Model Output */}
-            {homeWinPct != null && (
+            {canCalc && (
               <div style={{background:'rgba(192,132,252,0.08)',border:'1px solid rgba(192,132,252,0.2)',borderRadius:'var(--radius-sm)',padding:'10px',marginTop:'4px'}}>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',textAlign:'center'}}>
-                  <div>
-                    <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--gold)',textTransform:'uppercase',marginBottom:'6px'}}>{game.homeName}</div>
-                    <div style={{fontSize:'20px',fontWeight:900,fontFamily:"'JetBrains Mono', monospace",color:'var(--text)'}}>{Math.round(homeWinPct * 100)}%</div>
+                  {[{name:game.homeName,color:'var(--gold)',wp:homeWinPct,ml:homeTrueML,edge:homeEdge,bet:homeBet,lm:homeLineMov,tw:homeToWin},
+                    {name:game.awayName,color:'var(--accent)',wp:awayWinPct,ml:awayTrueML,edge:awayEdge,bet:awayBet,lm:awayLineMov,tw:awayToWin}].map((s,i) => (
+                  <div key={i}>
+                    <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:s.color,textTransform:'uppercase',marginBottom:'6px'}}>{s.name}</div>
+                    <div style={{fontSize:'20px',fontWeight:900,fontFamily:"'JetBrains Mono', monospace",color:'var(--text)'}}>{Math.round(s.wp * 100)}%</div>
                     <div style={{fontSize:'10px',color:'var(--text-dim)',marginTop:'2px'}}>True Win%</div>
-                    <div style={{fontSize:'15px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",color:'var(--accent)',marginTop:'4px'}}>{homeTrueML != null ? (homeTrueML > 0 ? '+' : '') + homeTrueML : '--'}</div>
+                    <div style={{fontSize:'15px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",color:'var(--accent)',marginTop:'4px'}}>{s.ml != null ? (s.ml > 0 ? '+' : '') + s.ml : '--'}</div>
                     <div style={{fontSize:'10px',color:'var(--text-dim)',marginTop:'2px'}}>True ML</div>
-                    {homeEdge != null && (
+                    {s.edge != null && (
                       <div style={{marginTop:'6px',padding:'3px 8px',borderRadius:'6px',display:'inline-block',
-                        background: parseFloat(homeEdge) > 3 ? 'var(--green-bg)' : parseFloat(homeEdge) > 0 ? 'rgba(90,200,250,0.1)' : 'var(--red-bg)',
-                        border: '1px solid ' + (parseFloat(homeEdge) > 3 ? 'var(--green-border)' : parseFloat(homeEdge) > 0 ? 'rgba(90,200,250,0.2)' : 'var(--red-border)')}}>
+                        background: parseFloat(s.edge) >= 7.4 ? 'var(--green-bg)' : parseFloat(s.edge) > 0 ? 'rgba(90,200,250,0.1)' : 'var(--red-bg)',
+                        border: '1px solid ' + (parseFloat(s.edge) >= 7.4 ? 'var(--green-border)' : parseFloat(s.edge) > 0 ? 'rgba(90,200,250,0.2)' : 'var(--red-border)')}}>
                         <span style={{fontSize:'13px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",
-                          color: parseFloat(homeEdge) > 3 ? 'var(--green)' : parseFloat(homeEdge) > 0 ? 'var(--accent)' : 'var(--red)'}}>
-                          {parseFloat(homeEdge) > 0 ? '+' : ''}{homeEdge}%
+                          color: parseFloat(s.edge) >= 7.4 ? 'var(--green)' : parseFloat(s.edge) > 0 ? 'var(--accent)' : 'var(--red)'}}>
+                          {parseFloat(s.edge) > 0 ? '+' : ''}{s.edge}%
                         </span>
-                        <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',marginTop:'1px'}}>EDGE</div>
+                        <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',marginTop:'1px'}}>EDGE {s.bet ? '✦ BET' : ''}</div>
+                      </div>
+                    )}
+                    {s.tw != null && (
+                      <div style={{marginTop:'4px',fontSize:'12px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",color:'var(--green)'}}>
+                        ${s.tw} <span style={{fontSize:'8px',color:'var(--text-muted)',fontWeight:700}}>TO WIN</span>
+                      </div>
+                    )}
+                    {s.lm != null && (
+                      <div style={{marginTop:'6px',fontSize:'11px',fontFamily:"'JetBrains Mono', monospace",color: parseFloat(s.lm) > 0 ? 'var(--green)' : parseFloat(s.lm) < 0 ? 'var(--red)' : 'var(--text-muted)'}}>
+                        {parseFloat(s.lm) > 0 ? '+' : ''}{s.lm}% <span style={{fontSize:'8px',color:'var(--text-muted)'}}>LINE MOV</span>
                       </div>
                     )}
                   </div>
-                  <div>
-                    <div style={{fontSize:'8px',fontWeight:800,letterSpacing:'1px',color:'var(--accent)',textTransform:'uppercase',marginBottom:'6px'}}>{game.awayName}</div>
-                    <div style={{fontSize:'20px',fontWeight:900,fontFamily:"'JetBrains Mono', monospace",color:'var(--text)'}}>{Math.round(awayWinPct * 100)}%</div>
-                    <div style={{fontSize:'10px',color:'var(--text-dim)',marginTop:'2px'}}>True Win%</div>
-                    <div style={{fontSize:'15px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",color:'var(--accent)',marginTop:'4px'}}>{awayTrueML != null ? (awayTrueML > 0 ? '+' : '') + awayTrueML : '--'}</div>
-                    <div style={{fontSize:'10px',color:'var(--text-dim)',marginTop:'2px'}}>True ML</div>
-                    {awayEdge != null && (
-                      <div style={{marginTop:'6px',padding:'3px 8px',borderRadius:'6px',display:'inline-block',
-                        background: parseFloat(awayEdge) > 3 ? 'var(--green-bg)' : parseFloat(awayEdge) > 0 ? 'rgba(90,200,250,0.1)' : 'var(--red-bg)',
-                        border: '1px solid ' + (parseFloat(awayEdge) > 3 ? 'var(--green-border)' : parseFloat(awayEdge) > 0 ? 'rgba(90,200,250,0.2)' : 'var(--red-border)')}}>
-                        <span style={{fontSize:'13px',fontWeight:800,fontFamily:"'JetBrains Mono', monospace",
-                          color: parseFloat(awayEdge) > 3 ? 'var(--green)' : parseFloat(awayEdge) > 0 ? 'var(--accent)' : 'var(--red)'}}>
-                          {parseFloat(awayEdge) > 0 ? '+' : ''}{awayEdge}%
-                        </span>
-                        <div style={{fontSize:'8px',fontWeight:700,color:'var(--text-muted)',marginTop:'1px'}}>EDGE</div>
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
                 <div style={{fontSize:'9px',color:'var(--text-muted)',textAlign:'center',marginTop:'8px',borderTop:'1px solid rgba(192,132,252,0.1)',paddingTop:'6px'}}>
                   Books: {game.homeName} {homeBooksProb != null ? Math.round(homeBooksProb * 100) + '%' : '--'} | {game.awayName} {awayBooksProb != null ? Math.round(awayBooksProb * 100) + '%' : '--'}
